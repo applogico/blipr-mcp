@@ -1,0 +1,45 @@
+{
+  "name": "@applogico/blipr-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that lets AI agents send Blipr push alerts to your phone — your agent can page you.",
+  "type": "module",
+  "bin": {
+    "blipr-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "modelcontextprotocol",
+    "blipr",
+    "notifications",
+    "push",
+    "alerts",
+    "apns",
+    "ai-agents",
+    "claude"
+  ],
+  "author": "Applogico LLC",
+  "homepage": "https://blipr.dev",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
