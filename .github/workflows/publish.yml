@@ -38,6 +38,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Test
+        run: npm test
+
       - name: Publish if version changed
         run: |
           LOCAL_VERSION=$(node -p "require('./package.json').version")

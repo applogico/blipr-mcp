@@ -1,5 +1,10 @@
 # @applogico/blipr-mcp
 
+[![npm version](https://img.shields.io/npm/v/@applogico/blipr-mcp)](https://www.npmjs.com/package/@applogico/blipr-mcp)
+[![CI](https://github.com/applogico/blipr-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/applogico/blipr-mcp/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/npm/l/@applogico/blipr-mcp)](./LICENSE)
+[![Node](https://img.shields.io/node/v/@applogico/blipr-mcp)](https://nodejs.org)
+
 An [MCP](https://modelcontextprotocol.io) server that lets AI agents send
 **[Blipr](https://blipr.dev)** push alerts to your phone. Your agent finishes a
 long task, breaks a build, needs approval, or gets stuck — and it pages you.
@@ -78,14 +83,15 @@ it's delivered as time-sensitive.
 > "Run the migration, and `send_alert` me when it's done — priority 4 if it
 > fails."
 
-> "You're about to delete production data — `send_critical` me for approval
-> first."
+> "If the nightly backup fails, `send_critical` me with the error — that one
+> can't wait."
 
 ## Develop
 
 ```bash
 npm install
 npm run build      # → dist/index.js
+npm test           # vitest: unit (publish) + in-memory MCP integration
 BLIPR_URL=https://blipr.dev BLIPR_TOPIC=demo node dist/index.js   # stdio
 ```
 
