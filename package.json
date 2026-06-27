@@ -30,6 +30,13 @@
   ],
   "author": "Applogico LLC",
   "homepage": "https://blipr.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/applogico/blipr-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/applogico/blipr-mcp/issues"
+  },
   "license": "MIT",
   "publishConfig": {
     "access": "public"
