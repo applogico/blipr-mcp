@@ -13,6 +13,7 @@ async function connect(cfg: BliprConfig) {
 }
 
 const calls = () => (global.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
+const bodyOf = (i = 0) => JSON.parse(calls()[i][1].body);
 function mockFetch(status = 200, statusText = "OK", body: string | null = null) {
   global.fetch = vi.fn(async () => new Response(body, { status, statusText })) as unknown as typeof fetch;
 }
@@ -27,7 +28,7 @@ describe("MCP server", () => {
     expect(tools.map((t) => t.name).sort()).toEqual(["send_alert", "send_critical"]);
   });
 
-  it("send_alert publishes with the right URL, priority, and result", async () => {
+  it("send_alert publishes the right JSON body and reports success", async () => {
     mockFetch();
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
     const res: any = await client.callTool({
@@ -36,8 +37,8 @@ describe("MCP server", () => {
     });
     expect(res.isError ?? false).toBe(false);
     expect(res.content[0].text).toMatch(/Sent to "ops"/);
-    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/ops");
-    expect(calls()[0][1].headers["X-Priority"]).toBe("4");
+    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify");
+    expect(bodyOf()).toMatchObject({ topic: "ops", message: "hi", priority: 4 });
   });
 
   it("send_critical sends priority 5", async () => {
@@ -48,7 +49,7 @@ describe("MCP server", () => {
       arguments: { message: "down", topic: "page" },
     });
     expect(res.content[0].text).toMatch(/Paged "page"/);
-    expect(calls()[0][1].headers["X-Priority"]).toBe("5");
+    expect(bodyOf()).toMatchObject({ topic: "page", priority: 5 });
   });
 
   it("returns isError when Blipr responds with a failure", async () => {

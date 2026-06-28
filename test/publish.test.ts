@@ -7,26 +7,28 @@ function mockFetch(impl: () => Promise<Response>) {
   global.fetch = vi.fn(impl) as unknown as typeof fetch;
 }
 const calls = () => (global.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
+const bodyOf = (i = 0) => JSON.parse(calls()[i][1].body);
 const ok = async () => new Response(null, { status: 200 });
 
 describe("publish", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("POSTs the message body to the topic URL", async () => {
+  it("POSTs JSON to /api/notify with the topic and message", async () => {
     mockFetch(ok);
     const topic = await publish({ message: "hi", topic: "alerts" }, cfg);
     expect(topic).toBe("alerts");
     const [url, init] = calls()[0];
-    expect(url).toBe("https://blipr.dev/api/notify/alerts");
+    expect(url).toBe("https://blipr.dev/api/notify");
     expect(init.method).toBe("POST");
-    expect(init.body).toBe("hi");
+    expect(init.headers["Content-Type"]).toBe("application/json");
+    expect(bodyOf()).toMatchObject({ topic: "alerts", message: "hi" });
   });
 
   it("falls back to the default topic when none is given", async () => {
     mockFetch(ok);
     const topic = await publish({ message: "hi" }, cfg);
     expect(topic).toBe("default-topic");
-    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/default-topic");
+    expect(bodyOf().topic).toBe("default-topic");
   });
 
   it("throws a clear error when there is no topic and no default", async () => {
@@ -37,39 +39,42 @@ describe("publish", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("maps title/priority/tags/click to headers", async () => {
+  it("maps title/priority/tags/click into the JSON body", async () => {
     mockFetch(ok);
     await publish(
       { message: "m", topic: "t", title: "T", priority: 5, tags: ["a", "b"], click: "https://x.com" },
       cfg
     );
-    const h = calls()[0][1].headers;
-    expect(h["X-Title"]).toBe("T");
-    expect(h["X-Priority"]).toBe("5");
-    expect(h["X-Tags"]).toBe("a,b");
-    expect(h["X-Click"]).toBe("https://x.com");
+    expect(bodyOf()).toEqual({
+      topic: "t",
+      message: "m",
+      title: "T",
+      priority: 5,
+      tags: ["a", "b"],
+      click: "https://x.com",
+    });
   });
 
-  it("omits optional headers when not provided", async () => {
+  it("preserves unicode (emoji) in the title — the whole point of JSON publish", async () => {
+    mockFetch(ok);
+    await publish({ message: "done", topic: "t", title: "Deploy ✅" }, cfg);
+    expect(bodyOf().title).toBe("Deploy ✅");
+  });
+
+  it("omits optional fields when not provided", async () => {
     mockFetch(ok);
     await publish({ message: "m", topic: "t" }, cfg);
-    const h = calls()[0][1].headers;
-    expect(h["X-Title"]).toBeUndefined();
-    expect(h["X-Priority"]).toBeUndefined();
-    expect(h["X-Tags"]).toBeUndefined();
-    expect(h["X-Click"]).toBeUndefined();
-  });
-
-  it("url-encodes the topic", async () => {
-    mockFetch(ok);
-    await publish({ message: "m", topic: "a/b c" }, cfg);
-    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/a%2Fb%20c");
+    const b = bodyOf();
+    expect(b.title).toBeUndefined();
+    expect(b.priority).toBeUndefined();
+    expect(b.tags).toBeUndefined();
+    expect(b.click).toBeUndefined();
   });
 
   it("strips a trailing slash from the base URL", async () => {
     mockFetch(ok);
     await publish({ message: "m", topic: "t" }, { bliprUrl: "https://blipr.dev/" });
-    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/t");
+    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify");
   });
 
   it("throws on a non-2xx response", async () => {
