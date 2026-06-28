@@ -10,6 +10,37 @@ export interface BliprConfig {
 /** The kind of reply a published message asks the human to attach. */
 export type ReplyKind = "binary" | "ack";
 
+/** Per-request long-poll deadline slack (ms) on top of the server's `wait`. */
+const POLL_SLACK_MS = 5000;
+/** Hard client-side timeout for the publish POST (ms). */
+const PUBLISH_TIMEOUT_MS = 15000;
+/** Server's max accepted long-poll `wait` (seconds); notify `reply.max_wait_secs`. */
+const SERVER_WAIT_CAP_SECONDS = 300;
+
+/**
+ * `fetch` with a hard client-side deadline. A hung / black-holed connection
+ * would otherwise ignore our timeout budget entirely; this aborts it. The timer
+ * is always cleared, so nothing lingers after the request resolves.
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** True when an error came from our own abort timer (vs a real network error). */
+function isAbort(e: Error): boolean {
+  return e.name === "AbortError" || e.name === "TimeoutError";
+}
+
 export interface PublishOpts {
   message: string;
   topic?: string;
@@ -60,13 +91,19 @@ async function postPublish(topic: string, opts: PublishOpts, cfg: BliprConfig): 
 
   let res: Response;
   try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildPayload(opts)),
-    });
+    res = await fetchWithTimeout(
+      url,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildPayload(opts)),
+      },
+      PUBLISH_TIMEOUT_MS
+    );
   } catch (e) {
-    throw new Error(`Could not reach Blipr at ${base}: ${(e as Error).message}`);
+    const err = e as Error;
+    const reason = isAbort(err) ? `timed out after ${PUBLISH_TIMEOUT_MS / 1000}s` : err.message;
+    throw new Error(`Could not reach Blipr at ${base}: ${reason}`);
   }
 
   if (!res.ok) {
@@ -147,13 +184,26 @@ export async function pollReply(
   let remaining = opts.timeoutSeconds;
 
   while (remaining > 0) {
-    const wait = Math.min(perRequestWait, remaining);
+    // Never request more than the server's accepted cap, nor more than is left.
+    const wait = Math.min(perRequestWait, remaining, SERVER_WAIT_CAP_SECONDS);
 
     let res: Response;
     try {
-      res = await fetch(`${replyUrl}?wait=${wait}`, { method: "GET" });
+      res = await fetchWithTimeout(
+        `${replyUrl}?wait=${wait}`,
+        { method: "GET" },
+        wait * 1000 + POLL_SLACK_MS
+      );
     } catch (e) {
-      throw new Error(`Could not reach Blipr at ${base}: ${(e as Error).message}`);
+      const err = e as Error;
+      // Our own per-request deadline fired (a hung / black-holed connection):
+      // treat this slice as having produced no reply and retry within the
+      // budget — NEVER as an answer. Genuine network errors fail closed (throw).
+      if (isAbort(err)) {
+        remaining -= wait;
+        continue;
+      }
+      throw new Error(`Could not reach Blipr at ${base}: ${err.message}`);
     }
     if (!res.ok) {
       const body = await res.text().catch(() => "");

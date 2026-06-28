@@ -153,4 +153,55 @@ describe("pollReply", () => {
     // deadline already passed → no request made
     expect(global.fetch).not.toHaveBeenCalled();
   });
+
+  it("throws (fail-closed) on a non-2xx reply poll — e.g. 404 after the message is pruned", async () => {
+    mockFetch(async () => new Response("gone", { status: 404, statusText: "Not Found" }));
+    await expect(pollReply("ops", "id1", { timeoutSeconds: 5 }, cfg)).rejects.toThrow(
+      /reply poll returned 404/
+    );
+  });
+
+  it("throws (fail-closed) on a network error during polling — never reports an answer", async () => {
+    mockFetch(async () => {
+      throw new Error("ECONNRESET");
+    });
+    await expect(pollReply("ops", "id1", { timeoutSeconds: 5 }, cfg)).rejects.toThrow(
+      /Could not reach Blipr/
+    );
+  });
+
+  it("polls each slice until the budget is exhausted, then gives up with timeout", async () => {
+    mockFetch(async () => jsonRes({ status: "timeout" }));
+    const outcome = await pollReply("ops", "id1", { timeoutSeconds: 3, waitSeconds: 1 }, cfg);
+    expect(outcome).toEqual({ status: "timeout" });
+    expect(calls().length).toBe(3); // three 1-second slices, then give up
+  });
+
+  it("never invents an answer from a malformed 'answered' (missing value)", async () => {
+    mockFetch(async () => jsonRes({ status: "answered" })); // no value field
+    const outcome = await pollReply("ops", "id1", { timeoutSeconds: 2, waitSeconds: 1 }, cfg);
+    expect(outcome).toEqual({ status: "timeout" });
+    expect(calls().length).toBe(2);
+  });
+
+  it("aborts a hung request and counts it as a no-reply slice (never an answer)", async () => {
+    vi.useFakeTimers();
+    // a fetch that never resolves on its own — only its abort signal ends it
+    global.fetch = vi.fn(
+      (_url: any, init: any) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal.addEventListener("abort", () => {
+            const e = new Error("aborted");
+            e.name = "AbortError";
+            reject(e);
+          });
+        })
+    ) as unknown as typeof fetch;
+    const p = pollReply("ops", "id1", { timeoutSeconds: 2, waitSeconds: 1 }, cfg);
+    await vi.advanceTimersByTimeAsync(6000); // slice 1 deadline: wait(1s) + slack(5s)
+    await vi.advanceTimersByTimeAsync(6000); // slice 2 deadline
+    await expect(p).resolves.toEqual({ status: "timeout" });
+    expect(calls().length).toBe(2);
+    vi.useRealTimers();
+  });
 });

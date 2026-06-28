@@ -94,9 +94,10 @@ guessing.
 - `tags` — emoji shortcodes, e.g. `["question"]`.
 - `timeout_seconds` — how long to wait for your answer (default `120`).
 
-Returns `{ answered: true, value: "yes" | "no" }`, or
-`{ answered: false, reason: "timeout" }` if you don't reply in time — treat a
-timeout as **not approved**.
+Returns `{ answered, approved, value }`. **Branch on `approved`** — it is `true`
+**only** when you tapped Yes, and `false` on No, a timeout, or an error, so a
+refusal or non-answer can never be misread as a go-ahead. On a timeout you get
+`{ answered: false, approved: false, reason: "timeout" }`.
 
 Under the hood it publishes with `reply: "binary"`, captures the message `id`
 from the publish response, then long-polls
@@ -130,7 +131,7 @@ Agent: about to delete the prod `events` table → calls
        ask("Delete prod `events` table (12M rows)? This cannot be undone.")
         … blocks; your phone buzzes …
 You:   tap "No"
-Agent: ask returns { answered: true, value: "no" } → aborts the deletion.
+Agent: ask returns { answered: true, approved: false, value: "no" } → aborts the deletion.
 ```
 
 ## Develop

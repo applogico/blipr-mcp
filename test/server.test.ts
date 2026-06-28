@@ -88,7 +88,7 @@ describe("MCP server", () => {
       arguments: { message: "delete prod?", timeout_seconds: 5 },
     });
     expect(res.isError ?? false).toBe(false);
-    expect(JSON.parse(res.content[0].text)).toEqual({ answered: true, value: "yes" });
+    expect(JSON.parse(res.content[0].text)).toEqual({ answered: true, approved: true, value: "yes" });
 
     // First call is the publish POST carrying reply:binary.
     expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/demo");
@@ -107,7 +107,53 @@ describe("MCP server", () => {
       arguments: { message: "proceed?", timeout_seconds: 1 },
     });
     expect(res.isError ?? false).toBe(false);
-    expect(JSON.parse(res.content[0].text)).toEqual({ answered: false, reason: "timeout" });
+    expect(JSON.parse(res.content[0].text)).toEqual({
+      answered: false,
+      approved: false,
+      reason: "timeout",
+    });
+  });
+
+  it("ask returns approved:false on a No — a refusal can never read as a go-ahead", async () => {
+    mockReplyFlow({ status: "answered", value: "no", replied_at: 1700000005 });
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    const res: any = await client.callTool({
+      name: "ask",
+      arguments: { message: "delete prod?", timeout_seconds: 5 },
+    });
+    expect(res.isError ?? false).toBe(false);
+    expect(JSON.parse(res.content[0].text)).toEqual({
+      answered: true,
+      approved: false,
+      value: "no",
+    });
+  });
+
+  it("ask surfaces isError (never approval) when the reply poll fails", async () => {
+    const json = (obj: unknown) =>
+      new Response(JSON.stringify(obj), { status: 200, headers: { "Content-Type": "application/json" } });
+    global.fetch = vi.fn(async (_url: any, init?: any) => {
+      const method = init?.method ?? "GET";
+      if (method === "POST") return json({ id: "id1", expected_reply: "binary", topic: "demo" });
+      return new Response("boom", { status: 500, statusText: "Internal Server Error" }); // reply GET fails
+    }) as unknown as typeof fetch;
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    const res: any = await client.callTool({
+      name: "ask",
+      arguments: { message: "proceed?", timeout_seconds: 5 },
+    });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toMatch(/500/);
+  });
+
+  it("ask surfaces isError when the publish itself fails (no question, no approval)", async () => {
+    mockFetch(503, "Service Unavailable", "down");
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    const res: any = await client.callTool({
+      name: "ask",
+      arguments: { message: "go?", timeout_seconds: 5 },
+    });
+    expect(res.isError).toBe(true);
   });
 
   it("request_ack publishes reply:ack and returns acknowledged on answer", async () => {

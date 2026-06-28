@@ -77,8 +77,9 @@ export function createServer(cfg: BliprConfig): McpServer {
         "then return it. This is a human-in-the-loop approval gate: use it before doing something " +
         "consequential or irreversible (deleting prod data, force-pushing, spending money, sending an " +
         "email) — anything where you'd otherwise ask 'should I proceed?'. The call does not return until " +
-        "the human answers or it times out; on timeout treat it as no approval. Returns { answered: true, " +
-        'value: "yes" | "no" } when answered, or { answered: false, reason: "timeout" } if no one replies in time.',
+        "the human answers or it times out. Returns { answered, approved, value } — ALWAYS branch on " +
+        "`approved`: it is true ONLY when the human tapped Yes, and false on No, a timeout, or an error. " +
+        "Never treat a non-approval (No / timeout / error) as a go-ahead; on anything but approved:true, do not proceed.",
       inputSchema: {
         message: z.string().describe("The yes/no question to ask the human."),
         title: z.string().optional().describe("Short title, shown bold above the question."),
@@ -119,8 +120,8 @@ export function createServer(cfg: BliprConfig): McpServer {
         );
         const result =
           outcome.status === "answered"
-            ? { answered: true, value: outcome.value }
-            : { answered: false, reason: "timeout" };
+            ? { answered: true, approved: outcome.value === "yes", value: outcome.value }
+            : { answered: false, approved: false, reason: "timeout" };
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (e) {
         return { content: [{ type: "text", text: (e as Error).message }], isError: true };
