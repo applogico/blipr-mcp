@@ -1,0 +1,41 @@
+name: Release Please
+
+# On every push to main, maintain a "Release vX.Y.Z" PR (CHANGELOG + the version
+# bump in package.json/package-lock.json, derived from conventional-commit
+# messages). Merging that PR cuts a vX.Y.Z tag + GitHub Release and publishes to
+# npm. Closing the PR skips the release.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: Maintain release PR
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # Runs only when the release PR is merged (a release is created). Calls the
+  # reusable publish workflow directly — release-please's tag push uses
+  # GITHUB_TOKEN, which by design would NOT trigger a tag- or release-based
+  # workflow on its own.
+  publish:
+    name: Publish the release to npm
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/publish.yml
+    secrets: inherit
