@@ -1,6 +1,6 @@
 {
   "name": "@applogico/blipr-mcp",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "MCP server that lets AI agents send Blipr push alerts to your phone — your agent can page you.",
   "type": "module",
   "bin": {

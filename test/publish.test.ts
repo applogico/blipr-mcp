@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { publish, type BliprConfig } from "../src/publish.js";
+import {
+  publish,
+  publishExpectingReply,
+  pollReply,
+  checkReply,
+  type BliprConfig,
+} from "../src/publish.js";
 
 const cfg: BliprConfig = { bliprUrl: "https://blipr.dev", defaultTopic: "default-topic" };
 
@@ -89,5 +95,138 @@ describe("publish", () => {
       throw new Error("ECONNREFUSED");
     });
     await expect(publish({ message: "m", topic: "t" }, cfg)).rejects.toThrow(/Could not reach Blipr/);
+  });
+});
+
+const jsonRes = (obj: unknown, status = 200) =>
+  new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
+
+describe("publishExpectingReply", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("sends the reply field and returns the parsed id + expected_reply", async () => {
+    mockFetch(async () => jsonRes({ id: "abc123def456", expected_reply: "binary", topic: "ops" }));
+    const result = await publishExpectingReply(
+      { message: "delete prod?", topic: "ops", reply: "binary" },
+      cfg
+    );
+    expect(bodyOf()).toMatchObject({ message: "delete prod?", reply: "binary" });
+    expect(result).toEqual({ topic: "ops", id: "abc123def456", expectedReply: "binary" });
+  });
+
+  it("throws when the publish response has no id", async () => {
+    mockFetch(async () => jsonRes({ topic: "ops" }));
+    await expect(
+      publishExpectingReply({ message: "m", topic: "ops", reply: "ack" }, cfg)
+    ).rejects.toThrow(/did not include a message id/);
+  });
+});
+
+describe("pollReply", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("returns the answer when the reply GET reports answered", async () => {
+    mockFetch(async () => jsonRes({ status: "answered", value: "yes", replied_at: 1700000000 }));
+    const outcome = await pollReply("ops", "abc123def456", { timeoutSeconds: 5 }, cfg);
+    expect(outcome).toEqual({ status: "answered", value: "yes", repliedAt: 1700000000 });
+    expect(calls()[0][0]).toMatch(
+      /^https:\/\/blipr\.dev\/api\/notify\/ops\/abc123def456\/reply\?wait=\d+$/
+    );
+  });
+
+  it("keeps polling past a 'timeout' response, then answers", async () => {
+    let n = 0;
+    mockFetch(async () => {
+      n += 1;
+      return n === 1
+        ? jsonRes({ status: "timeout" })
+        : jsonRes({ status: "answered", value: "no", replied_at: 1700000001 });
+    });
+    const outcome = await pollReply("ops", "id1", { timeoutSeconds: 10, waitSeconds: 1 }, cfg);
+    expect(outcome).toEqual({ status: "answered", value: "no", repliedAt: 1700000001 });
+    expect(n).toBe(2);
+  });
+
+  it("gives up with timeout once the overall deadline passes", async () => {
+    mockFetch(async () => jsonRes({ status: "timeout" }));
+    const outcome = await pollReply("ops", "id1", { timeoutSeconds: 0 }, cfg);
+    expect(outcome).toEqual({ status: "timeout" });
+    // deadline already passed → no request made
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("throws (fail-closed) on a non-2xx reply poll — e.g. 404 after the message is pruned", async () => {
+    mockFetch(async () => new Response("gone", { status: 404, statusText: "Not Found" }));
+    await expect(pollReply("ops", "id1", { timeoutSeconds: 5 }, cfg)).rejects.toThrow(
+      /reply poll returned 404/
+    );
+  });
+
+  it("throws (fail-closed) on a network error during polling — never reports an answer", async () => {
+    mockFetch(async () => {
+      throw new Error("ECONNRESET");
+    });
+    await expect(pollReply("ops", "id1", { timeoutSeconds: 5 }, cfg)).rejects.toThrow(
+      /Could not reach Blipr/
+    );
+  });
+
+  it("polls each slice until the budget is exhausted, then gives up with timeout", async () => {
+    mockFetch(async () => jsonRes({ status: "timeout" }));
+    const outcome = await pollReply("ops", "id1", { timeoutSeconds: 3, waitSeconds: 1 }, cfg);
+    expect(outcome).toEqual({ status: "timeout" });
+    expect(calls().length).toBe(3); // three 1-second slices, then give up
+  });
+
+  it("never invents an answer from a malformed 'answered' (missing value)", async () => {
+    mockFetch(async () => jsonRes({ status: "answered" })); // no value field
+    const outcome = await pollReply("ops", "id1", { timeoutSeconds: 2, waitSeconds: 1 }, cfg);
+    expect(outcome).toEqual({ status: "timeout" });
+    expect(calls().length).toBe(2);
+  });
+
+  it("aborts a hung request and counts it as a no-reply slice (never an answer)", async () => {
+    vi.useFakeTimers();
+    // a fetch that never resolves on its own — only its abort signal ends it
+    global.fetch = vi.fn(
+      (_url: any, init: any) =>
+        new Promise<Response>((_resolve, reject) => {
+          init.signal.addEventListener("abort", () => {
+            const e = new Error("aborted");
+            e.name = "AbortError";
+            reject(e);
+          });
+        })
+    ) as unknown as typeof fetch;
+    const p = pollReply("ops", "id1", { timeoutSeconds: 2, waitSeconds: 1 }, cfg);
+    await vi.advanceTimersByTimeAsync(6000); // slice 1 deadline: wait(1s) + slack(5s)
+    await vi.advanceTimersByTimeAsync(6000); // slice 2 deadline
+    await expect(p).resolves.toEqual({ status: "timeout" });
+    expect(calls().length).toBe(2);
+    vi.useRealTimers();
+  });
+});
+
+describe("checkReply (single-shot resume)", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("returns an already-attached answer immediately, one wait=0 GET, no looping", async () => {
+    mockFetch(async () => jsonRes({ status: "answered", value: "no", replied_at: 1700000123 }));
+    const outcome = await checkReply("ops", "id1", 0, cfg);
+    expect(outcome).toEqual({ status: "answered", value: "no", repliedAt: 1700000123 });
+    expect(calls().length).toBe(1);
+    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/ops/id1/reply?wait=0");
+  });
+
+  it("returns timeout (nothing yet) without looping", async () => {
+    mockFetch(async () => jsonRes({ status: "pending" }));
+    const outcome = await checkReply("ops", "id1", 0, cfg);
+    expect(outcome).toEqual({ status: "timeout" });
+    expect(calls().length).toBe(1);
+  });
+
+  it("throws (fail-closed) on a non-2xx check", async () => {
+    mockFetch(async () => new Response("gone", { status: 404, statusText: "Not Found" }));
+    await expect(checkReply("ops", "id1", 0, cfg)).rejects.toThrow(/reply poll returned 404/);
   });
 });

@@ -7,7 +7,9 @@
 
 An [MCP](https://modelcontextprotocol.io) server that lets AI agents send
 **[Blipr](https://blipr.dev)** push alerts to your phone. Your agent finishes a
-long task, breaks a build, needs approval, or gets stuck — and it pages you.
+long task, breaks a build, needs approval, or gets stuck — and it pages you. It
+can also **ask you a question and block until you answer**, for human-in-the-loop
+approval gates.
 
 It's a thin stdio client: your MCP host (Claude Code, Cursor, …) launches it,
 the agent calls a tool, and this process makes one outbound HTTPS `POST` to your
@@ -78,6 +80,52 @@ A priority-5 page for things that genuinely can't wait. Bypasses silent/Focus
 when the Blipr app has Apple's Critical Alerts entitlement enabled; otherwise
 it's delivered as time-sensitive.
 
+### `ask` — human-in-the-loop yes/no (blocks)
+
+Send a **yes/no question** to your phone and **block until you tap an answer**,
+then return it. This is an approval gate: the agent calls it before doing
+something consequential or irreversible and waits for your decision instead of
+guessing.
+
+- `message` (required) — the yes/no question.
+- `title` — short bold title.
+- `topic` — overrides `BLIPR_TOPIC`.
+- `priority` — defaults to `4` (time-sensitive) since it needs an answer.
+- `tags` — emoji shortcodes, e.g. `["question"]`.
+- `timeout_seconds` — how long to wait for your answer (default `120`).
+
+Returns `{ responded, approved, value, message_id, topic }`. **Branch on
+`approved`** — it is `true` **only** when you tapped Yes, and `false` on No, a
+timeout, or an error, so a refusal or non-answer can never be misread as a
+go-ahead. On a timeout you get
+`{ responded: false, approved: false, reason: "timeout", message_id, topic }`. If
+it times out (or your MCP client cancels the call), you can still answer for
+~30 min — pass the returned `message_id` to `check_reply` to resume.
+
+Under the hood it publishes with `reply: "binary"`, captures the message `id`
+from the publish response, then long-polls
+`GET /api/notify/<topic>/<id>/reply?wait=…` until you answer or the timeout
+budget runs out.
+
+### `request_ack` — require acknowledgement (blocks)
+
+Send a message that you must **acknowledge**, and **block until you tap
+"Acknowledge"**. Use it when the human has to see and confirm something before
+the agent continues. Same parameters as `ask`; publishes with `reply: "ack"`.
+
+Returns `{ responded, message_id, topic }` plus `replied_at` when acked, or
+`{ responded: false, reason: "timeout", … }`. As with `ask`, on a timeout you can
+resume later with `check_reply` and the returned `message_id`.
+
+### `check_reply` — resume / poll an earlier ask or request_ack
+
+Look up whether you've replied to an earlier `ask`/`request_ack` — handy if the
+blocking call timed out or your MCP client cancelled it. Pass the `message_id`
+(and `topic`) it returned; non-blocking by default, or set `wait_seconds` to
+briefly long-poll. Returns `{ responded, value?, replied_at? }` (`value` is
+`"yes"` / `"no"` / `"ack"`). Replies are kept ~30 minutes after the original
+message was sent.
+
 ## Example prompts
 
 > "Run the migration, and `send_alert` me when it's done — priority 4 if it
@@ -85,6 +133,19 @@ it's delivered as time-sensitive.
 
 > "If the nightly backup fails, `send_critical` me with the error — that one
 > can't wait."
+
+> "Before you `DROP` the production table, `ask` me to approve it — only proceed
+> if I answer yes."
+
+A concrete approval-gate flow:
+
+```
+Agent: about to delete the prod `events` table → calls
+       ask("Delete prod `events` table (12M rows)? This cannot be undone.")
+        … blocks; your phone buzzes …
+You:   tap "No"
+Agent: ask returns { responded: true, approved: false, value: "no" } → aborts the deletion.
+```
 
 ## Develop
 
