@@ -7,7 +7,9 @@
 
 An [MCP](https://modelcontextprotocol.io) server that lets AI agents send
 **[Blipr](https://blipr.dev)** push alerts to your phone. Your agent finishes a
-long task, breaks a build, needs approval, or gets stuck — and it pages you.
+long task, breaks a build, needs approval, or gets stuck — and it pages you. It
+can also **ask you a question and block until you answer**, for human-in-the-loop
+approval gates.
 
 It's a thin stdio client: your MCP host (Claude Code, Cursor, …) launches it,
 the agent calls a tool, and this process makes one outbound HTTPS `POST` to your
@@ -78,6 +80,38 @@ A priority-5 page for things that genuinely can't wait. Bypasses silent/Focus
 when the Blipr app has Apple's Critical Alerts entitlement enabled; otherwise
 it's delivered as time-sensitive.
 
+### `ask` — human-in-the-loop yes/no (blocks)
+
+Send a **yes/no question** to your phone and **block until you tap an answer**,
+then return it. This is an approval gate: the agent calls it before doing
+something consequential or irreversible and waits for your decision instead of
+guessing.
+
+- `message` (required) — the yes/no question.
+- `title` — short bold title.
+- `topic` — overrides `BLIPR_TOPIC`.
+- `priority` — defaults to `4` (time-sensitive) since it needs an answer.
+- `tags` — emoji shortcodes, e.g. `["question"]`.
+- `timeout_seconds` — how long to wait for your answer (default `120`).
+
+Returns `{ answered: true, value: "yes" | "no" }`, or
+`{ answered: false, reason: "timeout" }` if you don't reply in time — treat a
+timeout as **not approved**.
+
+Under the hood it publishes with `reply: "binary"`, captures the message `id`
+from the publish response, then long-polls
+`GET /api/notify/<topic>/<id>/reply?wait=…` until you answer or the timeout
+budget runs out.
+
+### `request_ack` — require acknowledgement (blocks)
+
+Send a message that you must **acknowledge**, and **block until you tap
+"Acknowledge"**. Use it when the human has to see and confirm something before
+the agent continues. Same parameters as `ask`; publishes with `reply: "ack"`.
+
+Returns `{ acknowledged: true, replied_at }`, or
+`{ acknowledged: false, reason: "timeout" }`.
+
 ## Example prompts
 
 > "Run the migration, and `send_alert` me when it's done — priority 4 if it
@@ -85,6 +119,19 @@ it's delivered as time-sensitive.
 
 > "If the nightly backup fails, `send_critical` me with the error — that one
 > can't wait."
+
+> "Before you `DROP` the production table, `ask` me to approve it — only proceed
+> if I answer yes."
+
+A concrete approval-gate flow:
+
+```
+Agent: about to delete the prod `events` table → calls
+       ask("Delete prod `events` table (12M rows)? This cannot be undone.")
+        … blocks; your phone buzzes …
+You:   tap "No"
+Agent: ask returns { answered: true, value: "no" } → aborts the deletion.
+```
 
 ## Develop
 
