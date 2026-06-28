@@ -3,6 +3,7 @@ import {
   publish,
   publishExpectingReply,
   pollReply,
+  checkReply,
   type BliprConfig,
 } from "../src/publish.js";
 
@@ -203,5 +204,29 @@ describe("pollReply", () => {
     await expect(p).resolves.toEqual({ status: "timeout" });
     expect(calls().length).toBe(2);
     vi.useRealTimers();
+  });
+});
+
+describe("checkReply (single-shot resume)", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("returns an already-attached answer immediately, one wait=0 GET, no looping", async () => {
+    mockFetch(async () => jsonRes({ status: "answered", value: "no", replied_at: 1700000123 }));
+    const outcome = await checkReply("ops", "id1", 0, cfg);
+    expect(outcome).toEqual({ status: "answered", value: "no", repliedAt: 1700000123 });
+    expect(calls().length).toBe(1);
+    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/ops/id1/reply?wait=0");
+  });
+
+  it("returns timeout (nothing yet) without looping", async () => {
+    mockFetch(async () => jsonRes({ status: "pending" }));
+    const outcome = await checkReply("ops", "id1", 0, cfg);
+    expect(outcome).toEqual({ status: "timeout" });
+    expect(calls().length).toBe(1);
+  });
+
+  it("throws (fail-closed) on a non-2xx check", async () => {
+    mockFetch(async () => new Response("gone", { status: 404, statusText: "Not Found" }));
+    await expect(checkReply("ops", "id1", 0, cfg)).rejects.toThrow(/reply poll returned 404/);
   });
 });

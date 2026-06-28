@@ -94,10 +94,13 @@ guessing.
 - `tags` — emoji shortcodes, e.g. `["question"]`.
 - `timeout_seconds` — how long to wait for your answer (default `120`).
 
-Returns `{ answered, approved, value }`. **Branch on `approved`** — it is `true`
-**only** when you tapped Yes, and `false` on No, a timeout, or an error, so a
-refusal or non-answer can never be misread as a go-ahead. On a timeout you get
-`{ answered: false, approved: false, reason: "timeout" }`.
+Returns `{ responded, approved, value, message_id, topic }`. **Branch on
+`approved`** — it is `true` **only** when you tapped Yes, and `false` on No, a
+timeout, or an error, so a refusal or non-answer can never be misread as a
+go-ahead. On a timeout you get
+`{ responded: false, approved: false, reason: "timeout", message_id, topic }`. If
+it times out (or your MCP client cancels the call), you can still answer for
+~30 min — pass the returned `message_id` to `check_reply` to resume.
 
 Under the hood it publishes with `reply: "binary"`, captures the message `id`
 from the publish response, then long-polls
@@ -110,8 +113,18 @@ Send a message that you must **acknowledge**, and **block until you tap
 "Acknowledge"**. Use it when the human has to see and confirm something before
 the agent continues. Same parameters as `ask`; publishes with `reply: "ack"`.
 
-Returns `{ acknowledged: true, replied_at }`, or
-`{ acknowledged: false, reason: "timeout" }`.
+Returns `{ responded, message_id, topic }` plus `replied_at` when acked, or
+`{ responded: false, reason: "timeout", … }`. As with `ask`, on a timeout you can
+resume later with `check_reply` and the returned `message_id`.
+
+### `check_reply` — resume / poll an earlier ask or request_ack
+
+Look up whether you've replied to an earlier `ask`/`request_ack` — handy if the
+blocking call timed out or your MCP client cancelled it. Pass the `message_id`
+(and `topic`) it returned; non-blocking by default, or set `wait_seconds` to
+briefly long-poll. Returns `{ responded, value?, replied_at? }` (`value` is
+`"yes"` / `"no"` / `"ack"`). Replies are kept ~30 minutes after the original
+message was sent.
 
 ## Example prompts
 
@@ -131,7 +144,7 @@ Agent: about to delete the prod `events` table → calls
        ask("Delete prod `events` table (12M rows)? This cannot be undone.")
         … blocks; your phone buzzes …
 You:   tap "No"
-Agent: ask returns { answered: true, approved: false, value: "no" } → aborts the deletion.
+Agent: ask returns { responded: true, approved: false, value: "no" } → aborts the deletion.
 ```
 
 ## Develop

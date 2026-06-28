@@ -162,13 +162,51 @@ export interface PollOpts {
   waitSeconds?: number;
 }
 
+/** Build the reply endpoint base URL for a topic + message id. */
+function replyUrlFor(topic: string, messageId: string, cfg: BliprConfig): { base: string; replyUrl: string } {
+  const base = cfg.bliprUrl.replace(/\/+$/, "");
+  return {
+    base,
+    replyUrl: `${base}/api/notify/${encodeURIComponent(topic)}/${encodeURIComponent(messageId)}/reply`,
+  };
+}
+
 /**
- * Long-poll `GET /api/notify/{topic}/{id}/reply?wait=` in a loop until the human
- * answers or the overall timeout budget is exhausted.
- *
- * Each request blocks server-side for up to `wait` seconds; a `pending`/`timeout`
- * response means "nothing yet", so we spend that slice of the budget and poll
- * again until either an answer lands or the budget runs out, then give up.
+ * One reply `GET`. Returns the answer, or `null` for "no reply on this slice"
+ * (`pending`/`timeout`, a malformed `answered`, or our own abort of a hung
+ * request). Throws on a real error (non-2xx, network) so callers fail closed.
+ */
+async function pollOnce(replyUrl: string, wait: number, base: string): Promise<ReplyOutcome | null> {
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(`${replyUrl}?wait=${wait}`, { method: "GET" }, wait * 1000 + POLL_SLACK_MS);
+  } catch (e) {
+    const err = e as Error;
+    // Our own per-request deadline fired (a hung / black-holed connection): no
+    // reply this slice — NEVER an answer. Genuine network errors fail closed.
+    if (isAbort(err)) return null;
+    throw new Error(`Could not reach Blipr at ${base}: ${err.message}`);
+  }
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Blipr reply poll returned ${res.status} ${res.statusText}${body ? ` — ${body}` : ""}`);
+  }
+  const data = (await res.json().catch(() => ({}))) as {
+    status?: string;
+    value?: string;
+    replied_at?: number;
+  };
+  if (data.status === "answered" && typeof data.value === "string") {
+    return { status: "answered", value: data.value, repliedAt: data.replied_at };
+  }
+  return null; // "pending" / "timeout" / malformed → nothing yet
+}
+
+/**
+ * Long-poll the reply endpoint in a loop until the human answers or the overall
+ * timeout budget is exhausted. Each request blocks server-side for up to `wait`
+ * seconds; "nothing yet" spends that slice and we poll again. Network/HTTP errors
+ * throw (fail closed) — a non-answer is never reported as an answer.
  */
 export async function pollReply(
   topic: string,
@@ -176,53 +214,32 @@ export async function pollReply(
   opts: PollOpts,
   cfg: BliprConfig
 ): Promise<ReplyOutcome> {
-  const base = cfg.bliprUrl.replace(/\/+$/, "");
-  const replyUrl = `${base}/api/notify/${encodeURIComponent(topic)}/${encodeURIComponent(
-    messageId
-  )}/reply`;
+  const { base, replyUrl } = replyUrlFor(topic, messageId, cfg);
   const perRequestWait = Math.max(1, opts.waitSeconds ?? 30);
   let remaining = opts.timeoutSeconds;
 
   while (remaining > 0) {
     // Never request more than the server's accepted cap, nor more than is left.
     const wait = Math.min(perRequestWait, remaining, SERVER_WAIT_CAP_SECONDS);
-
-    let res: Response;
-    try {
-      res = await fetchWithTimeout(
-        `${replyUrl}?wait=${wait}`,
-        { method: "GET" },
-        wait * 1000 + POLL_SLACK_MS
-      );
-    } catch (e) {
-      const err = e as Error;
-      // Our own per-request deadline fired (a hung / black-holed connection):
-      // treat this slice as having produced no reply and retry within the
-      // budget — NEVER as an answer. Genuine network errors fail closed (throw).
-      if (isAbort(err)) {
-        remaining -= wait;
-        continue;
-      }
-      throw new Error(`Could not reach Blipr at ${base}: ${err.message}`);
-    }
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new Error(
-        `Blipr reply poll returned ${res.status} ${res.statusText}${body ? ` — ${body}` : ""}`
-      );
-    }
-
-    const data = (await res.json().catch(() => ({}))) as {
-      status?: string;
-      value?: string;
-      replied_at?: number;
-    };
-
-    if (data.status === "answered" && typeof data.value === "string") {
-      return { status: "answered", value: data.value, repliedAt: data.replied_at };
-    }
-    // "pending" or "timeout" → that slice of the budget produced no reply.
+    const outcome = await pollOnce(replyUrl, wait, base);
+    if (outcome) return outcome;
     remaining -= wait;
   }
   return { status: "timeout" };
+}
+
+/**
+ * Single, non-looping reply check — for resuming an earlier ask/request_ack
+ * (after it timed out or the client cancelled). `waitSeconds` 0 returns the
+ * current state immediately; >0 briefly long-polls (capped at the server max).
+ */
+export async function checkReply(
+  topic: string,
+  messageId: string,
+  waitSeconds: number,
+  cfg: BliprConfig
+): Promise<ReplyOutcome> {
+  const { base, replyUrl } = replyUrlFor(topic, messageId, cfg);
+  const wait = Math.max(0, Math.min(waitSeconds, SERVER_WAIT_CAP_SECONDS));
+  return (await pollOnce(replyUrl, wait, base)) ?? { status: "timeout" };
 }

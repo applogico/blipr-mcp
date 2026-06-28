@@ -27,6 +27,7 @@ describe("MCP server", () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
       "ask",
+      "check_reply",
       "request_ack",
       "send_alert",
       "send_critical",
@@ -88,7 +89,13 @@ describe("MCP server", () => {
       arguments: { message: "delete prod?", timeout_seconds: 5 },
     });
     expect(res.isError ?? false).toBe(false);
-    expect(JSON.parse(res.content[0].text)).toEqual({ answered: true, approved: true, value: "yes" });
+    expect(JSON.parse(res.content[0].text)).toEqual({
+      responded: true,
+      approved: true,
+      value: "yes",
+      message_id: "abc123def456",
+      topic: "demo",
+    });
 
     // First call is the publish POST carrying reply:binary.
     expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/demo");
@@ -108,9 +115,11 @@ describe("MCP server", () => {
     });
     expect(res.isError ?? false).toBe(false);
     expect(JSON.parse(res.content[0].text)).toEqual({
-      answered: false,
+      responded: false,
       approved: false,
       reason: "timeout",
+      message_id: "abc123def456",
+      topic: "demo",
     });
   });
 
@@ -123,9 +132,11 @@ describe("MCP server", () => {
     });
     expect(res.isError ?? false).toBe(false);
     expect(JSON.parse(res.content[0].text)).toEqual({
-      answered: true,
+      responded: true,
       approved: false,
       value: "no",
+      message_id: "abc123def456",
+      topic: "demo",
     });
   });
 
@@ -164,7 +175,12 @@ describe("MCP server", () => {
       arguments: { message: "starting the long run", timeout_seconds: 5 },
     });
     expect(res.isError ?? false).toBe(false);
-    expect(JSON.parse(res.content[0].text)).toEqual({ acknowledged: true, replied_at: 1700000042 });
+    expect(JSON.parse(res.content[0].text)).toEqual({
+      responded: true,
+      replied_at: 1700000042,
+      message_id: "abc123def456",
+      topic: "demo",
+    });
     expect(bodyOf(0)).toMatchObject({ message: "starting the long run", reply: "ack" });
   });
 
@@ -175,6 +191,38 @@ describe("MCP server", () => {
       name: "request_ack",
       arguments: { message: "ack me", timeout_seconds: 1 },
     });
-    expect(JSON.parse(res.content[0].text)).toEqual({ acknowledged: false, reason: "timeout" });
+    expect(JSON.parse(res.content[0].text)).toEqual({
+      responded: false,
+      reason: "timeout",
+      message_id: "abc123def456",
+      topic: "demo",
+    });
+  });
+
+  it("check_reply returns the stored answer when one exists (resume after a timeout)", async () => {
+    mockFetch(200, "OK", JSON.stringify({ status: "answered", value: "yes", replied_at: 1700000099 }));
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    const res: any = await client.callTool({
+      name: "check_reply",
+      arguments: { message_id: "abc123def456" },
+    });
+    expect(res.isError ?? false).toBe(false);
+    expect(JSON.parse(res.content[0].text)).toEqual({
+      responded: true,
+      value: "yes",
+      replied_at: 1700000099,
+    });
+    // a single instant GET (wait=0), no publish
+    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/demo/abc123def456/reply?wait=0");
+  });
+
+  it("check_reply reports not-responded when there is no answer yet", async () => {
+    mockFetch(200, "OK", JSON.stringify({ status: "pending" }));
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    const res: any = await client.callTool({
+      name: "check_reply",
+      arguments: { message_id: "abc123def456" },
+    });
+    expect(JSON.parse(res.content[0].text)).toEqual({ responded: false, reason: "timeout" });
   });
 });
