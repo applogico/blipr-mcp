@@ -13,22 +13,23 @@ const ok = async () => new Response(null, { status: 200 });
 describe("publish", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("POSTs JSON to /api/notify with the topic and message", async () => {
+  it("POSTs a JSON body to /api/notify/{topic}", async () => {
     mockFetch(ok);
     const topic = await publish({ message: "hi", topic: "alerts" }, cfg);
     expect(topic).toBe("alerts");
     const [url, init] = calls()[0];
-    expect(url).toBe("https://blipr.dev/api/notify");
+    expect(url).toBe("https://blipr.dev/api/notify/alerts");
     expect(init.method).toBe("POST");
     expect(init.headers["Content-Type"]).toBe("application/json");
-    expect(bodyOf()).toMatchObject({ topic: "alerts", message: "hi" });
+    // topic is in the URL, not the body
+    expect(bodyOf()).toEqual({ message: "hi" });
   });
 
   it("falls back to the default topic when none is given", async () => {
     mockFetch(ok);
     const topic = await publish({ message: "hi" }, cfg);
     expect(topic).toBe("default-topic");
-    expect(bodyOf().topic).toBe("default-topic");
+    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/default-topic");
   });
 
   it("throws a clear error when there is no topic and no default", async () => {
@@ -46,7 +47,6 @@ describe("publish", () => {
       cfg
     );
     expect(bodyOf()).toEqual({
-      topic: "t",
       message: "m",
       title: "T",
       priority: 5,
@@ -64,17 +64,19 @@ describe("publish", () => {
   it("omits optional fields when not provided", async () => {
     mockFetch(ok);
     await publish({ message: "m", topic: "t" }, cfg);
-    const b = bodyOf();
-    expect(b.title).toBeUndefined();
-    expect(b.priority).toBeUndefined();
-    expect(b.tags).toBeUndefined();
-    expect(b.click).toBeUndefined();
+    expect(bodyOf()).toEqual({ message: "m" });
+  });
+
+  it("url-encodes the topic in the path", async () => {
+    mockFetch(ok);
+    await publish({ message: "m", topic: "a/b c" }, cfg);
+    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/a%2Fb%20c");
   });
 
   it("strips a trailing slash from the base URL", async () => {
     mockFetch(ok);
     await publish({ message: "m", topic: "t" }, { bliprUrl: "https://blipr.dev/" });
-    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify");
+    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/t");
   });
 
   it("throws on a non-2xx response", async () => {

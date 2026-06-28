@@ -19,9 +19,9 @@ export interface PublishOpts {
 /**
  * Publish a message to a Blipr topic. Returns the resolved topic on success.
  *
- * Uses the JSON publish endpoint (`POST /api/notify`) rather than the
- * header-based one. The JSON body is UTF-8, so titles/messages with emoji or
- * accents work — HTTP headers are Latin-1 only and would corrupt or reject them.
+ * Posts to `POST /api/notify/{topic}` (topic in the URL) with a JSON body. JSON
+ * is UTF-8, so titles/messages with emoji or accents survive — HTTP headers are
+ * Latin-1 only and would corrupt or reject them.
  */
 export async function publish(opts: PublishOpts, cfg: BliprConfig): Promise<string> {
   const topic = (opts.topic ?? cfg.defaultTopic ?? "").trim();
@@ -31,17 +31,19 @@ export async function publish(opts: PublishOpts, cfg: BliprConfig): Promise<stri
     );
   }
 
-  const payload: Record<string, unknown> = { topic, message: opts.message };
+  // Topic goes in the URL path; everything else is the JSON body.
+  const payload: Record<string, unknown> = { message: opts.message };
   if (opts.title) payload.title = opts.title;
   if (opts.priority) payload.priority = opts.priority;
   if (opts.tags?.length) payload.tags = opts.tags;
   if (opts.click) payload.click = opts.click;
 
   const base = cfg.bliprUrl.replace(/\/+$/, "");
+  const url = `${base}/api/notify/${encodeURIComponent(topic)}`;
 
   let res: Response;
   try {
-    res = await fetch(`${base}/api/notify`, {
+    res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

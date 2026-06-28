@@ -37,8 +37,8 @@ describe("MCP server", () => {
     });
     expect(res.isError ?? false).toBe(false);
     expect(res.content[0].text).toMatch(/Sent to "ops"/);
-    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify");
-    expect(bodyOf()).toMatchObject({ topic: "ops", message: "hi", priority: 4 });
+    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/ops");
+    expect(bodyOf()).toMatchObject({ message: "hi", priority: 4 });
   });
 
   it("send_critical sends priority 5", async () => {
@@ -49,7 +49,8 @@ describe("MCP server", () => {
       arguments: { message: "down", topic: "page" },
     });
     expect(res.content[0].text).toMatch(/Paged "page"/);
-    expect(bodyOf()).toMatchObject({ topic: "page", priority: 5 });
+    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/page");
+    expect(bodyOf()).toMatchObject({ priority: 5 });
   });
 
   it("returns isError when Blipr responds with a failure", async () => {
