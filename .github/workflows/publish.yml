@@ -1,19 +1,18 @@
 name: Publish to npm
 
+# Reusable: called by release-please.yml only when a release is created (the
+# release PR is merged). Publishes the current version to npm via OIDC Trusted
+# Publishing. release-please owns the version bump and the git tag/release, so
+# there is no version-diff guard or tagging here.
 on:
-  push:
-    branches: [main]
+  workflow_call:
   workflow_dispatch:
-
-concurrency:
-  group: publish-${{ github.ref }}
-  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # push the release tag after a successful publish
+      contents: read
       id-token: write # OIDC — lets npm Trusted Publishing authenticate this run
     steps:
       - uses: actions/checkout@v4
@@ -28,12 +27,7 @@ jobs:
         run: npm install -g npm@latest
 
       - name: Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+        run: npm ci
 
       - name: Build
         run: npm run build
@@ -41,24 +35,5 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Publish if version changed (and tag the release)
-        run: |
-          LOCAL_VERSION=$(node -p "require('./package.json').version")
-          PUBLISHED_VERSION=$(npm view @applogico/blipr-mcp version 2>/dev/null || echo "")
-          if [ "$LOCAL_VERSION" = "$PUBLISHED_VERSION" ]; then
-            echo "version $LOCAL_VERSION already published, skipping"
-            exit 0
-          fi
-          echo "publishing $LOCAL_VERSION (published: ${PUBLISHED_VERSION:-none})"
-          npm publish --access public
-
-          # Tag the released commit so every published version has a matching
-          # vX.Y.Z tag (the version is bumped in a PR, not via `npm version`).
-          TAG="v$LOCAL_VERSION"
-          if git ls-remote --exit-code --tags origin "$TAG" >/dev/null 2>&1; then
-            echo "tag $TAG already on origin, skipping"
-          else
-            git tag "$TAG"
-            git push origin "$TAG"
-            echo "tagged + pushed $TAG"
-          fi
+      - name: Publish
+        run: npm publish --access public
