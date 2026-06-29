@@ -87,7 +87,7 @@ function buildPayload(opts: PublishOpts): Record<string, unknown> {
 /** POST the publish body and return the raw Response (after an ok() check). */
 async function postPublish(topic: string, opts: PublishOpts, cfg: BliprConfig): Promise<Response> {
   const base = cfg.bliprUrl.replace(/\/+$/, "");
-  const url = `${base}/api/notify/${encodeURIComponent(topic)}`;
+  const url = `${base}/blip/${encodeURIComponent(topic)}`;
 
   let res: Response;
   try {
@@ -116,7 +116,7 @@ async function postPublish(topic: string, opts: PublishOpts, cfg: BliprConfig): 
 /**
  * Publish a message to a Blipr topic. Returns the resolved topic on success.
  *
- * Posts to `POST /api/notify/{topic}` (topic in the URL) with a JSON body. JSON
+ * Posts to `POST /blip/{topic}` (topic in the URL) with a JSON body. JSON
  * is UTF-8, so titles/messages with emoji or accents survive — HTTP headers are
  * Latin-1 only and would corrupt or reject them.
  */
@@ -167,7 +167,7 @@ function replyUrlFor(topic: string, messageId: string, cfg: BliprConfig): { base
   const base = cfg.bliprUrl.replace(/\/+$/, "");
   return {
     base,
-    replyUrl: `${base}/api/notify/${encodeURIComponent(topic)}/${encodeURIComponent(messageId)}/reply`,
+    replyUrl: `${base}/blip/${encodeURIComponent(topic)}/${encodeURIComponent(messageId)}/reply`,
   };
 }
 

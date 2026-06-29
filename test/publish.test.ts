@@ -19,12 +19,12 @@ const ok = async () => new Response(null, { status: 200 });
 describe("publish", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("POSTs a JSON body to /api/notify/{topic}", async () => {
+  it("POSTs a JSON body to /blip/{topic}", async () => {
     mockFetch(ok);
     const topic = await publish({ message: "hi", topic: "alerts" }, cfg);
     expect(topic).toBe("alerts");
     const [url, init] = calls()[0];
-    expect(url).toBe("https://blipr.dev/api/notify/alerts");
+    expect(url).toBe("https://blipr.dev/blip/alerts");
     expect(init.method).toBe("POST");
     expect(init.headers["Content-Type"]).toBe("application/json");
     // topic is in the URL, not the body
@@ -35,7 +35,7 @@ describe("publish", () => {
     mockFetch(ok);
     const topic = await publish({ message: "hi" }, cfg);
     expect(topic).toBe("default-topic");
-    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/default-topic");
+    expect(calls()[0][0]).toBe("https://blipr.dev/blip/default-topic");
   });
 
   it("throws a clear error when there is no topic and no default", async () => {
@@ -76,13 +76,13 @@ describe("publish", () => {
   it("url-encodes the topic in the path", async () => {
     mockFetch(ok);
     await publish({ message: "m", topic: "a/b c" }, cfg);
-    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/a%2Fb%20c");
+    expect(calls()[0][0]).toBe("https://blipr.dev/blip/a%2Fb%20c");
   });
 
   it("strips a trailing slash from the base URL", async () => {
     mockFetch(ok);
     await publish({ message: "m", topic: "t" }, { bliprUrl: "https://blipr.dev/" });
-    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/t");
+    expect(calls()[0][0]).toBe("https://blipr.dev/blip/t");
   });
 
   it("throws on a non-2xx response", async () => {
@@ -130,7 +130,7 @@ describe("pollReply", () => {
     const outcome = await pollReply("ops", "abc123def456", { timeoutSeconds: 5 }, cfg);
     expect(outcome).toEqual({ status: "answered", value: "yes", repliedAt: 1700000000 });
     expect(calls()[0][0]).toMatch(
-      /^https:\/\/blipr\.dev\/api\/notify\/ops\/abc123def456\/reply\?wait=\d+$/
+      /^https:\/\/blipr\.dev\/blip\/ops\/abc123def456\/reply\?wait=\d+$/
     );
   });
 
@@ -215,7 +215,7 @@ describe("checkReply (single-shot resume)", () => {
     const outcome = await checkReply("ops", "id1", 0, cfg);
     expect(outcome).toEqual({ status: "answered", value: "no", repliedAt: 1700000123 });
     expect(calls().length).toBe(1);
-    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/ops/id1/reply?wait=0");
+    expect(calls()[0][0]).toBe("https://blipr.dev/blip/ops/id1/reply?wait=0");
   });
 
   it("returns timeout (nothing yet) without looping", async () => {
