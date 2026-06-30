@@ -43,7 +43,7 @@ describe("MCP server", () => {
     });
     expect(res.isError ?? false).toBe(false);
     expect(res.content[0].text).toMatch(/Sent to "ops"/);
-    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/ops");
+    expect(calls()[0][0]).toBe("https://blipr.dev/blip/ops");
     expect(bodyOf()).toMatchObject({ message: "hi", priority: 4 });
   });
 
@@ -55,7 +55,7 @@ describe("MCP server", () => {
       arguments: { message: "down", topic: "page" },
     });
     expect(res.content[0].text).toMatch(/Paged "page"/);
-    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/page");
+    expect(calls()[0][0]).toBe("https://blipr.dev/blip/page");
     expect(bodyOf()).toMatchObject({ priority: 5 });
   });
 
@@ -98,11 +98,11 @@ describe("MCP server", () => {
     });
 
     // First call is the publish POST carrying reply:binary.
-    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/demo");
+    expect(calls()[0][0]).toBe("https://blipr.dev/blip/demo");
     expect(bodyOf(0)).toMatchObject({ message: "delete prod?", reply: "binary" });
     // Second call is the long-poll GET against the returned id.
     expect(calls()[1][0]).toMatch(
-      /^https:\/\/blipr\.dev\/api\/notify\/demo\/abc123def456\/reply\?wait=\d+$/
+      /^https:\/\/blipr\.dev\/blip\/demo\/abc123def456\/reply\?wait=\d+$/
     );
   });
 
@@ -213,7 +213,7 @@ describe("MCP server", () => {
       replied_at: 1700000099,
     });
     // a single instant GET (wait=0), no publish
-    expect(calls()[0][0]).toBe("https://blipr.dev/api/notify/demo/abc123def456/reply?wait=0");
+    expect(calls()[0][0]).toBe("https://blipr.dev/blip/demo/abc123def456/reply?wait=0");
   });
 
   it("check_reply reports not-responded when there is no answer yet", async () => {
