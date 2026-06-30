@@ -16,7 +16,7 @@ the agent calls a tool, and this process makes one outbound HTTPS `POST` to your
 Blipr server. No inbound socket, nothing to host.
 
 ```
-Claude Code ──stdio──► blipr-mcp ──POST /api/notify/<topic>──► blipr.dev ──APNs──► 📱
+Claude Code ──stdio──► blipr-mcp ──POST /blip/<topic>──► blipr.dev ──APNs──► 📱
 ```
 
 ## Setup
@@ -104,7 +104,7 @@ it times out (or your MCP client cancels the call), you can still answer for
 
 Under the hood it publishes with `reply: "binary"`, captures the message `id`
 from the publish response, then long-polls
-`GET /api/notify/<topic>/<id>/reply?wait=…` until you answer or the timeout
+`GET /blip/<topic>/<id>/reply?wait=…` until you answer or the timeout
 budget runs out.
 
 ### `request_ack` — require acknowledgement (blocks)
