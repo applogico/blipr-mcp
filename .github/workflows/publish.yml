@@ -19,10 +19,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
-      # Trusted Publishing (OIDC) + provenance needs a recent npm; Node 20 ships npm 10.
+      # Trusted Publishing (OIDC) + provenance needs a recent npm; npm@latest (12+)
+      # requires Node >= 22.22 / 24.15, so the runtime must be Node 24, not 20.
       - name: Upgrade npm
         run: npm install -g npm@latest
 
