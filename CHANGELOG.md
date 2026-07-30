@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/applogico/blipr-mcp/compare/v0.3.1...v0.4.0) (2026-07-30)
+
+
+### Features
+
+* rename to @blipr/mcp and make the topic per-project/per-call ([a1d23d4](https://github.com/applogico/blipr-mcp/commit/a1d23d4471259ed61e021278f06483ba8acee411))
+* rename to @blipr/mcp and make the topic per-project/per-call ([5fa0551](https://github.com/applogico/blipr-mcp/commit/5fa0551c4c312ef4fc54d5900b705e04eae74961)), closes [#8](https://github.com/applogico/blipr-mcp/issues/8) [#9](https://github.com/applogico/blipr-mcp/issues/9)
+
 ## [0.3.1](https://github.com/applogico/blipr-mcp/compare/v0.3.0...v0.3.1) (2026-06-30)
 
 
