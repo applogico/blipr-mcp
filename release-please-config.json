@@ -3,7 +3,7 @@
   "packages": {
     ".": {
       "release-type": "node",
-      "package-name": "@applogico/blipr-mcp",
+      "package-name": "@blipr/mcp",
       "include-component-in-tag": false
     }
   }

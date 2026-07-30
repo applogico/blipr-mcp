@@ -1,9 +1,13 @@
-# @applogico/blipr-mcp
+# @blipr/mcp
 
-[![npm version](https://img.shields.io/npm/v/@applogico/blipr-mcp)](https://www.npmjs.com/package/@applogico/blipr-mcp)
+[![npm version](https://img.shields.io/npm/v/@blipr/mcp)](https://www.npmjs.com/package/@blipr/mcp)
 [![CI](https://github.com/applogico/blipr-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/applogico/blipr-mcp/actions/workflows/ci.yml)
-[![license: MIT](https://img.shields.io/npm/l/@applogico/blipr-mcp)](./LICENSE)
-[![Node](https://img.shields.io/node/v/@applogico/blipr-mcp)](https://nodejs.org)
+[![license: MIT](https://img.shields.io/npm/l/@blipr/mcp)](./LICENSE)
+[![Node](https://img.shields.io/node/v/@blipr/mcp)](https://nodejs.org)
+
+> Previously published as `@applogico/blipr-mcp`. That package is deprecated;
+> new releases ship as **`@blipr/mcp`**. Update your MCP config to
+> `npx -y @blipr/mcp`.
 
 An [MCP](https://modelcontextprotocol.io) server that lets AI agents send
 **[Blipr](https://blipr.dev)** push alerts to your phone. Your agent finishes a
@@ -16,21 +20,20 @@ the agent calls a tool, and this process makes one outbound HTTPS `POST` to your
 Blipr server. No inbound socket, nothing to host.
 
 ```
-Claude Code ──stdio──► blipr-mcp ──POST /blip/<topic>──► blipr.dev ──APNs──► 📱
+Claude Code ──stdio──► @blipr/mcp ──POST /blip/<topic>──► blipr.dev ──APNs──► 📱
 ```
 
 ## Setup
 
 No install needed — `npx` fetches it on demand. Point it at a Blipr server
-(`blipr.dev` or your own self-hosted instance) and a default topic.
+(`blipr.dev` or your own self-hosted instance).
 
 ### Claude Code
 
 ```bash
 claude mcp add blipr \
   --env BLIPR_URL=https://blipr.dev \
-  --env BLIPR_TOPIC=agent-alerts \
-  -- npx -y @applogico/blipr-mcp
+  -- npx -y @blipr/mcp
 ```
 
 ### Cursor / Claude Desktop / any MCP host (JSON)
@@ -40,25 +43,43 @@ claude mcp add blipr \
   "mcpServers": {
     "blipr": {
       "command": "npx",
-      "args": ["-y", "@applogico/blipr-mcp"],
+      "args": ["-y", "@blipr/mcp"],
       "env": {
-        "BLIPR_URL": "https://blipr.dev",
-        "BLIPR_TOPIC": "agent-alerts"
+        "BLIPR_URL": "https://blipr.dev"
       }
     }
   }
 }
 ```
 
-Then subscribe to the same topic (`agent-alerts`) in the Blipr iOS app, and
-you'll get the agent's pushes on your phone.
+### Pick a topic (per project, not global)
+
+Every blip goes to a **topic**, and each project should use its own, so alerts
+from different projects land separately on your phone. The topic for a call is
+resolved in this order:
+
+1. **`topic` tool argument** — the agent passes it on the call. Always wins.
+2. **`.blipr-topic` file** — per-project default. Put the topic name on the
+   first line of a `.blipr-topic` file in the project root; the server picks up
+   the nearest one from its launch directory upward (`#` lines are comments).
+3. **`BLIPR_TOPIC` env var** — global fallback, kept for backward
+   compatibility. Avoid it when one machine hosts several projects: a global
+   default makes every project ping the same topic.
+
+```bash
+echo my-project-alerts > .blipr-topic
+```
+
+Then subscribe to the same topic (`my-project-alerts`) in the Blipr iOS app,
+and you'll get the agent's pushes on your phone.
 
 ## Configuration
 
-| Env var       | Default             | Description                                            |
-| ------------- | ------------------- | ------------------------------------------------------ |
-| `BLIPR_URL`   | `https://blipr.dev` | Base URL of your Blipr server (hosted or self-hosted). |
-| `BLIPR_TOPIC` | _(none)_            | Default topic used when a tool call omits one.         |
+| Setting                    | Default             | Description                                                                 |
+| -------------------------- | ------------------- | --------------------------------------------------------------------------- |
+| `BLIPR_URL` (env)          | `https://blipr.dev` | Base URL of your Blipr server (hosted or self-hosted).                      |
+| `.blipr-topic` (file)      | _(none)_            | Per-project default topic, nearest file from the launch directory upward.   |
+| `BLIPR_TOPIC` (env)        | _(none)_            | Global fallback topic; lowest precedence (see "Pick a topic" above).        |
 
 ## Tools
 
@@ -68,7 +89,8 @@ Send a push notification. Parameters:
 
 - `message` (required) — the alert body.
 - `title` — short bold title.
-- `topic` — overrides `BLIPR_TOPIC`.
+- `topic` — topic to publish to; pass it explicitly (falls back to
+  `.blipr-topic`, then `BLIPR_TOPIC`).
 - `priority` — `1` silent · `2` low · `3` default · `4` time-sensitive (breaks
   Focus) · `5` critical.
 - `tags` — emoji shortcodes, e.g. `["warning"]`.
@@ -89,7 +111,8 @@ guessing.
 
 - `message` (required) — the yes/no question.
 - `title` — short bold title.
-- `topic` — overrides `BLIPR_TOPIC`.
+- `topic` — topic to publish to; pass it explicitly (falls back to
+  `.blipr-topic`, then `BLIPR_TOPIC`).
 - `priority` — defaults to `4` (time-sensitive) since it needs an answer.
 - `tags` — emoji shortcodes, e.g. `["question"]`.
 - `timeout_seconds` — how long to wait for your answer (default `120`).
@@ -152,7 +175,7 @@ Agent: ask returns { responded: true, approved: false, value: "no" } → aborts 
 ```bash
 npm install
 npm run build      # → dist/index.js
-npm test           # vitest: unit (publish) + in-memory MCP integration
+npm test           # vitest: unit (publish, config) + in-memory MCP integration
 BLIPR_URL=https://blipr.dev BLIPR_TOPIC=demo node dist/index.js   # stdio
 ```
 
