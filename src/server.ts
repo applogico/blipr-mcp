@@ -27,7 +27,10 @@ export function createServer(cfg: BliprConfig): McpServer {
         topic: z
           .string()
           .optional()
-          .describe("Topic to publish to. Defaults to the BLIPR_TOPIC env var."),
+          .describe(
+            "Topic to publish to. Pass it explicitly — each project should use its own topic. " +
+              "When omitted, falls back to the project's `.blipr-topic` file, then the BLIPR_TOPIC env var."
+          ),
         priority: z
           .number()
           .int()
@@ -61,7 +64,13 @@ export function createServer(cfg: BliprConfig): McpServer {
       inputSchema: {
         message: z.string().describe("What is wrong or what you need, urgently."),
         title: z.string().optional().describe("Short title."),
-        topic: z.string().optional().describe("Topic. Defaults to BLIPR_TOPIC."),
+        topic: z
+          .string()
+          .optional()
+          .describe(
+            "Topic to publish to. Pass it explicitly — each project should use its own topic. " +
+              "When omitted, falls back to the project's `.blipr-topic` file, then the BLIPR_TOPIC env var."
+          ),
       },
     },
     async ({ message, title, topic }) => {
@@ -93,7 +102,10 @@ export function createServer(cfg: BliprConfig): McpServer {
         topic: z
           .string()
           .optional()
-          .describe("Topic to publish to. Defaults to the BLIPR_TOPIC env var."),
+          .describe(
+            "Topic to publish to. Pass it explicitly — each project should use its own topic. " +
+              "When omitted, falls back to the project's `.blipr-topic` file, then the BLIPR_TOPIC env var."
+          ),
         priority: z
           .number()
           .int()
@@ -159,7 +171,10 @@ export function createServer(cfg: BliprConfig): McpServer {
         topic: z
           .string()
           .optional()
-          .describe("Topic to publish to. Defaults to the BLIPR_TOPIC env var."),
+          .describe(
+            "Topic to publish to. Pass it explicitly — each project should use its own topic. " +
+              "When omitted, falls back to the project's `.blipr-topic` file, then the BLIPR_TOPIC env var."
+          ),
         priority: z
           .number()
           .int()
@@ -218,7 +233,11 @@ export function createServer(cfg: BliprConfig): McpServer {
         topic: z
           .string()
           .optional()
-          .describe("Topic the original message was sent to. Defaults to the BLIPR_TOPIC env var."),
+          .describe(
+            "Topic the original message was sent to. Pass it explicitly when you passed one on the " +
+              "original call; otherwise it falls back to the same default (`.blipr-topic` file, then " +
+              "the BLIPR_TOPIC env var)."
+          ),
         wait_seconds: z
           .number()
           .int()
@@ -232,7 +251,8 @@ export function createServer(cfg: BliprConfig): McpServer {
         const t = (topic ?? cfg.defaultTopic ?? "").trim();
         if (!t) {
           throw new Error(
-            "No topic given and BLIPR_TOPIC is not set. Pass `topic`, or set the BLIPR_TOPIC env var."
+            "No topic given and no default is configured. Pass `topic` in the tool call, " +
+              "or set a per-project default in a `.blipr-topic` file (or the BLIPR_TOPIC env var)."
           );
         }
         const outcome = await checkReply(t, message_id, wait_seconds ?? 0, cfg);

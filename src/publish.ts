@@ -67,7 +67,8 @@ function resolveTopic(opts: PublishOpts, cfg: BliprConfig): string {
   const topic = (opts.topic ?? cfg.defaultTopic ?? "").trim();
   if (!topic) {
     throw new Error(
-      "No topic given and BLIPR_TOPIC is not set. Pass `topic`, or set the BLIPR_TOPIC env var."
+      "No topic given and no default is configured. Pass `topic` in the tool call, " +
+        "or set a per-project default in a `.blipr-topic` file (or the BLIPR_TOPIC env var)."
     );
   }
   return topic;
