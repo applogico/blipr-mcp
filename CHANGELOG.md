@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.1](https://github.com/applogico/blipr-mcp/compare/v0.4.0...v0.4.1) (2026-08-02)
+
+
+### Bug Fixes
+
+* default ask/ack to priority 5 so approval prompts break through Focus ([c7eae96](https://github.com/applogico/blipr-mcp/commit/c7eae96f726bfee171cb5c70d4b270273df52652))
+* release the corrected priority descriptions ([1c98b30](https://github.com/applogico/blipr-mcp/commit/1c98b30262acd637bcf038a8e330e8252210cfa3))
+
 ## [0.4.0](https://github.com/applogico/blipr-mcp/compare/v0.3.1...v0.4.0) (2026-07-30)
 
 
