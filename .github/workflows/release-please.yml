@@ -19,6 +19,7 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
+      html_url: ${{ steps.release.outputs.html_url }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -39,3 +40,20 @@ jobs:
       id-token: write
     uses: ./.github/workflows/publish.yml
     secrets: inherit
+
+  announce:
+    name: Announce the release
+    needs: [release-please, publish]
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Blip the release to blipr-releases
+        continue-on-error: true
+        uses: applogico/blipr-action@v1
+        with:
+          topic: blipr-releases
+          title: "@blipr/mcp ${{ needs.release-please.outputs.tag_name }} released"
+          message: "npx -y @blipr/mcp"
+          priority: 3
+          tags: package
+          click: ${{ needs.release-please.outputs.html_url }}
