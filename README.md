@@ -91,8 +91,8 @@ Send a push notification. Parameters:
 - `title` — short bold title.
 - `topic` — topic to publish to; pass it explicitly (falls back to
   `.blipr-topic`, then `BLIPR_TOPIC`).
-- `priority` — `1` silent · `2` low · `3` default · `4` time-sensitive (breaks
-  Focus) · `5` critical.
+- `priority` — `1` silent · `2` low · `3` default · `4` high (plays a sound,
+  respects Focus) · `5` critical (breaks Focus).
 - `tags` — emoji shortcodes, e.g. `["warning"]`.
 - `click` — URL opened when the notification is tapped.
 
@@ -113,7 +113,7 @@ guessing.
 - `title` — short bold title.
 - `topic` — topic to publish to; pass it explicitly (falls back to
   `.blipr-topic`, then `BLIPR_TOPIC`).
-- `priority` — defaults to `4` (time-sensitive) since it needs an answer.
+- `priority` — defaults to `4` (high) since it needs an answer.
 - `tags` — emoji shortcodes, e.g. `["question"]`.
 - `timeout_seconds` — how long to wait for your answer (default `120`).
 

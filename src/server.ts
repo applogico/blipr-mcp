@@ -37,7 +37,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .min(1)
           .max(5)
           .optional()
-          .describe("1=min/silent, 2=low, 3=default, 4=time-sensitive (breaks Focus), 5=critical."),
+          .describe("1=min/silent, 2=low, 3=default, 4=high (plays a sound, respects Focus), 5=critical (breaks Focus)."),
         tags: z
           .array(z.string())
           .optional()
@@ -112,7 +112,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .min(1)
           .max(5)
           .optional()
-          .describe("1=min/silent … 5=critical. Defaults to 4 (time-sensitive) since it needs an answer."),
+          .describe("1=min/silent … 5=critical. Defaults to 4 (high) since it needs an answer."),
         tags: z
           .array(z.string())
           .optional()
@@ -181,7 +181,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .min(1)
           .max(5)
           .optional()
-          .describe("1=min/silent … 5=critical. Defaults to 4 (time-sensitive) since it needs an ack."),
+          .describe("1=min/silent … 5=critical. Defaults to 4 (high) since it needs an ack."),
         tags: z
           .array(z.string())
           .optional()
