@@ -20,6 +20,8 @@ const defaultTopic = resolveDefaultTopic(process.cwd());
 const cfg = {
   bliprUrl: (process.env.BLIPR_URL ?? "https://blipr.dev").replace(/\/+$/, ""),
   defaultTopic: defaultTopic?.topic,
+  // Trimmed so a stray newline from a host config can't malform the header.
+  token: process.env.BLIPR_TOKEN?.trim() || undefined,
 };
 
 const server = createServer(cfg);
@@ -31,4 +33,6 @@ const topicNote = defaultTopic
       defaultTopic.source === "file" ? defaultTopic.path : "BLIPR_TOPIC env"
     })`
   : " (no default topic — tool calls must pass `topic`)";
-console.error(`@blipr/mcp ready → ${cfg.bliprUrl}${topicNote}`);
+// Presence only, never the value.
+const tokenNote = cfg.token ? " (token: set)" : "";
+console.error(`@blipr/mcp ready → ${cfg.bliprUrl}${topicNote}${tokenNote}`);

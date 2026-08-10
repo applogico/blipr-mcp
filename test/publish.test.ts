@@ -230,3 +230,116 @@ describe("checkReply (single-shot resume)", () => {
     await expect(checkReply("ops", "id1", 0, cfg)).rejects.toThrow(/reply poll returned 404/);
   });
 });
+
+const TOKEN = "blipr_pk_secret123";
+const tokenCfg: BliprConfig = { ...cfg, token: TOKEN };
+const authOf = (i = 0) => calls()[i][1].headers?.Authorization;
+
+describe("bearer token", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("sends no Authorization header when no token is configured", async () => {
+    mockFetch(ok);
+    await publish({ message: "m", topic: "t" }, cfg);
+    expect(authOf()).toBeUndefined();
+  });
+
+  it("sends Authorization: Bearer on publish when a token is configured", async () => {
+    mockFetch(ok);
+    await publish({ message: "m", topic: "t" }, tokenCfg);
+    expect(authOf()).toBe(`Bearer ${TOKEN}`);
+    expect(calls()[0][1].headers["Content-Type"]).toBe("application/json");
+  });
+
+  it("sends Authorization on a publish that expects a reply", async () => {
+    mockFetch(async () => jsonRes({ id: "abc123def456", expected_reply: "binary" }));
+    await publishExpectingReply({ message: "m", topic: "t", reply: "binary" }, tokenCfg);
+    expect(authOf()).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it("sends Authorization on every reply long-poll slice", async () => {
+    mockFetch(async () => jsonRes({ status: "timeout" }));
+    await pollReply("ops", "id1", { timeoutSeconds: 2, waitSeconds: 1 }, tokenCfg);
+    expect(calls().length).toBe(2);
+    expect(authOf(0)).toBe(`Bearer ${TOKEN}`);
+    expect(authOf(1)).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it("sends Authorization on a single-shot reply check, and none without a token", async () => {
+    mockFetch(async () => jsonRes({ status: "pending" }));
+    await checkReply("ops", "id1", 0, tokenCfg);
+    expect(authOf()).toBe(`Bearer ${TOKEN}`);
+    await checkReply("ops", "id1", 0, cfg);
+    expect(authOf(1)).toBeUndefined();
+  });
+
+  it("never leaks the token into an HTTP error message", async () => {
+    mockFetch(async () => new Response("denied", { status: 403, statusText: "Forbidden" }));
+    const err = await publish({ message: "m", topic: "@alice/alerts" }, tokenCfg).catch(
+      (e: Error) => e
+    );
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).not.toContain(TOKEN);
+  });
+
+  it("never leaks the token into a network error message", async () => {
+    mockFetch(async () => {
+      throw new Error("ECONNREFUSED");
+    });
+    const err = await publish({ message: "m", topic: "@alice/alerts" }, tokenCfg).catch(
+      (e: Error) => e
+    );
+    expect((err as Error).message).not.toContain(TOKEN);
+  });
+});
+
+describe("namespaced @handle/topic URLs", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("keeps the handle and topic as separate path segments on publish", async () => {
+    mockFetch(ok);
+    const topic = await publish({ message: "m", topic: "@alice/alerts" }, cfg);
+    expect(topic).toBe("@alice/alerts");
+    expect(calls()[0][0]).toBe("https://blipr.dev/blip/%40alice/alerts");
+  });
+
+  it("keeps both segments on the reply URL", async () => {
+    mockFetch(async () => jsonRes({ status: "answered", value: "yes" }));
+    await checkReply("@alice/alerts", "abc123def456", 0, cfg);
+    expect(calls()[0][0]).toBe("https://blipr.dev/blip/%40alice/alerts/abc123def456/reply?wait=0");
+  });
+
+  it("encodes each segment without escaping the separator", async () => {
+    mockFetch(ok);
+    await publish({ message: "m", topic: "@a b/c d" }, cfg);
+    expect(calls()[0][0]).toBe("https://blipr.dev/blip/%40a%20b/c%20d");
+  });
+
+  it("leaves a plain topic encoded as a single segment (unchanged behaviour)", async () => {
+    mockFetch(ok);
+    await publish({ message: "m", topic: "a/b" }, cfg);
+    expect(calls()[0][0]).toBe("https://blipr.dev/blip/a%2Fb");
+  });
+
+  it("publishes then polls the reply on a namespaced topic, authorized throughout", async () => {
+    let n = 0;
+    mockFetch(async () => {
+      n += 1;
+      return n === 1
+        ? jsonRes({ id: "abc123def456", expected_reply: "binary" })
+        : jsonRes({ status: "answered", value: "yes", replied_at: 1700000000 });
+    });
+    const { topic, id } = await publishExpectingReply(
+      { message: "ship it?", topic: "@alice/alerts", reply: "binary" },
+      tokenCfg
+    );
+    const outcome = await pollReply(topic, id, { timeoutSeconds: 5 }, tokenCfg);
+    expect(outcome).toEqual({ status: "answered", value: "yes", repliedAt: 1700000000 });
+    expect(calls()[0][0]).toBe("https://blipr.dev/blip/%40alice/alerts");
+    expect(calls()[1][0]).toMatch(
+      /^https:\/\/blipr\.dev\/blip\/%40alice\/alerts\/abc123def456\/reply\?wait=\d+$/
+    );
+    expect(authOf(0)).toBe(`Bearer ${TOKEN}`);
+    expect(authOf(1)).toBe(`Bearer ${TOKEN}`);
+  });
+});

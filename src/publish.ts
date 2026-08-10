@@ -5,6 +5,8 @@ export interface BliprConfig {
   bliprUrl: string;
   /** Topic used when a call omits one. */
   defaultTopic?: string;
+  /** Scoped token sent as a bearer credential; nothing is sent when unset. */
+  token?: string;
 }
 
 /** The kind of reply a published message asks the human to attach. */
@@ -62,6 +64,24 @@ export interface PublishResult {
   expectedReply?: ReplyKind;
 }
 
+/**
+ * Bearer credential for the configured token, or no headers at all when there
+ * is none — an unconfigured server sends exactly what it always has.
+ */
+function authHeaders(cfg: BliprConfig): Record<string, string> {
+  return cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {};
+}
+
+/**
+ * Encode a topic for the URL path. A namespaced `@handle/topic` is two path
+ * segments and each is encoded separately; every other topic stays the single
+ * encoded segment it has always been.
+ */
+function encodeTopicPath(topic: string): string {
+  if (!topic.startsWith("@")) return encodeURIComponent(topic);
+  return topic.split("/").map(encodeURIComponent).join("/");
+}
+
 /** Resolve the topic (call-supplied or default) or throw a clear error. */
 function resolveTopic(opts: PublishOpts, cfg: BliprConfig): string {
   const topic = (opts.topic ?? cfg.defaultTopic ?? "").trim();
@@ -88,7 +108,7 @@ function buildPayload(opts: PublishOpts): Record<string, unknown> {
 /** POST the publish body and return the raw Response (after an ok() check). */
 async function postPublish(topic: string, opts: PublishOpts, cfg: BliprConfig): Promise<Response> {
   const base = cfg.bliprUrl.replace(/\/+$/, "");
-  const url = `${base}/blip/${encodeURIComponent(topic)}`;
+  const url = `${base}/blip/${encodeTopicPath(topic)}`;
 
   let res: Response;
   try {
@@ -96,7 +116,7 @@ async function postPublish(topic: string, opts: PublishOpts, cfg: BliprConfig): 
       url,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders(cfg) },
         body: JSON.stringify(buildPayload(opts)),
       },
       PUBLISH_TIMEOUT_MS
@@ -168,7 +188,7 @@ function replyUrlFor(topic: string, messageId: string, cfg: BliprConfig): { base
   const base = cfg.bliprUrl.replace(/\/+$/, "");
   return {
     base,
-    replyUrl: `${base}/blip/${encodeURIComponent(topic)}/${encodeURIComponent(messageId)}/reply`,
+    replyUrl: `${base}/blip/${encodeTopicPath(topic)}/${encodeURIComponent(messageId)}/reply`,
   };
 }
 
@@ -177,10 +197,19 @@ function replyUrlFor(topic: string, messageId: string, cfg: BliprConfig): { base
  * (`pending`/`timeout`, a malformed `answered`, or our own abort of a hung
  * request). Throws on a real error (non-2xx, network) so callers fail closed.
  */
-async function pollOnce(replyUrl: string, wait: number, base: string): Promise<ReplyOutcome | null> {
+async function pollOnce(
+  replyUrl: string,
+  wait: number,
+  base: string,
+  cfg: BliprConfig
+): Promise<ReplyOutcome | null> {
   let res: Response;
   try {
-    res = await fetchWithTimeout(`${replyUrl}?wait=${wait}`, { method: "GET" }, wait * 1000 + POLL_SLACK_MS);
+    res = await fetchWithTimeout(
+      `${replyUrl}?wait=${wait}`,
+      { method: "GET", headers: authHeaders(cfg) },
+      wait * 1000 + POLL_SLACK_MS
+    );
   } catch (e) {
     const err = e as Error;
     // Our own per-request deadline fired (a hung / black-holed connection): no
@@ -222,7 +251,7 @@ export async function pollReply(
   while (remaining > 0) {
     // Never request more than the server's accepted cap, nor more than is left.
     const wait = Math.min(perRequestWait, remaining, SERVER_WAIT_CAP_SECONDS);
-    const outcome = await pollOnce(replyUrl, wait, base);
+    const outcome = await pollOnce(replyUrl, wait, base, cfg);
     if (outcome) return outcome;
     remaining -= wait;
   }
@@ -242,5 +271,5 @@ export async function checkReply(
 ): Promise<ReplyOutcome> {
   const { base, replyUrl } = replyUrlFor(topic, messageId, cfg);
   const wait = Math.max(0, Math.min(waitSeconds, SERVER_WAIT_CAP_SECONDS));
-  return (await pollOnce(replyUrl, wait, base)) ?? { status: "timeout" };
+  return (await pollOnce(replyUrl, wait, base, cfg)) ?? { status: "timeout" };
 }
