@@ -13,14 +13,15 @@
  *                  `topic` and no `.blipr-topic` file. Optional.
  */
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { resolveDefaultTopic, resolveToken } from "./config.js";
+import { resolveDefaultTopic } from "./config.js";
 import { createServer } from "./server.js";
 
 const defaultTopic = resolveDefaultTopic(process.cwd());
 const cfg = {
   bliprUrl: (process.env.BLIPR_URL ?? "https://blipr.dev").replace(/\/+$/, ""),
   defaultTopic: defaultTopic?.topic,
-  token: resolveToken(process.cwd()),
+  // Trimmed so a stray newline from a host config can't malform the header.
+  token: process.env.BLIPR_TOKEN?.trim() || undefined,
 };
 
 const server = createServer(cfg);

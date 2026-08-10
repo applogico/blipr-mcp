@@ -2,15 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  ENV_FILE,
-  findTopicFile,
-  parseEnvFile,
-  parseTopicFile,
-  resolveDefaultTopic,
-  resolveToken,
-  TOPIC_FILE,
-} from "../src/config.js";
+import { findTopicFile, parseTopicFile, resolveDefaultTopic, TOPIC_FILE } from "../src/config.js";
 
 let dirs: string[] = [];
 function tempDir(): string {
@@ -99,79 +91,5 @@ describe("resolveDefaultTopic (precedence: file > env)", () => {
   it("returns undefined with no file and no env (calls must pass topic)", () => {
     expect(resolveDefaultTopic(tempDir(), {})).toBeUndefined();
     expect(resolveDefaultTopic(tempDir(), { BLIPR_TOPIC: "  " })).toBeUndefined();
-  });
-});
-
-describe("parseEnvFile", () => {
-  it("parses KEY=VALUE pairs", () => {
-    expect(parseEnvFile("BLIPR_TOKEN=blipr_pk_abc\nBLIPR_URL=https://x.dev\n")).toEqual({
-      BLIPR_TOKEN: "blipr_pk_abc",
-      BLIPR_URL: "https://x.dev",
-    });
-  });
-
-  it("skips blanks and # comments, and trims whitespace", () => {
-    expect(parseEnvFile("# a comment\n\n  BLIPR_TOKEN =  blipr_pk_abc  \n")).toEqual({
-      BLIPR_TOKEN: "blipr_pk_abc",
-    });
-  });
-
-  it("strips one layer of matching quotes and an export prefix", () => {
-    expect(parseEnvFile(`export BLIPR_TOKEN="blipr_pk_abc"`)).toEqual({
-      BLIPR_TOKEN: "blipr_pk_abc",
-    });
-    expect(parseEnvFile("BLIPR_TOKEN='blipr_pk_abc'")).toEqual({ BLIPR_TOKEN: "blipr_pk_abc" });
-  });
-
-  it("keeps = inside a value (tokens are opaque)", () => {
-    expect(parseEnvFile("BLIPR_TOKEN=blipr_pk_a=b=c")).toEqual({ BLIPR_TOKEN: "blipr_pk_a=b=c" });
-  });
-
-  it("ignores lines with no key or no =", () => {
-    expect(parseEnvFile("nonsense\n=orphan\n")).toEqual({});
-  });
-});
-
-describe("resolveToken (precedence: env > .env file)", () => {
-  it("returns undefined when there is no env var and no .env file", () => {
-    expect(resolveToken(tempDir(), {})).toBeUndefined();
-  });
-
-  it("uses the BLIPR_TOKEN env var, trimmed", () => {
-    expect(resolveToken(tempDir(), { BLIPR_TOKEN: " blipr_pk_env " })).toBe("blipr_pk_env");
-  });
-
-  it("falls back to the .env file in the launch directory", () => {
-    const dir = tempDir();
-    writeFileSync(join(dir, ENV_FILE), "BLIPR_TOKEN=blipr_pk_file\n");
-    expect(resolveToken(dir, {})).toBe("blipr_pk_file");
-  });
-
-  it("prefers the env var over the .env file", () => {
-    const dir = tempDir();
-    writeFileSync(join(dir, ENV_FILE), "BLIPR_TOKEN=blipr_pk_file\n");
-    expect(resolveToken(dir, { BLIPR_TOKEN: "blipr_pk_env" })).toBe("blipr_pk_env");
-  });
-
-  it("ignores an empty value in either source", () => {
-    const dir = tempDir();
-    writeFileSync(join(dir, ENV_FILE), "BLIPR_TOKEN=   \n");
-    expect(resolveToken(dir, { BLIPR_TOKEN: "  " })).toBeUndefined();
-  });
-
-  it("reads .env from the launch directory only — a parent's is not picked up", () => {
-    const root = tempDir();
-    writeFileSync(join(root, ENV_FILE), "BLIPR_TOKEN=blipr_pk_parent\n");
-    const nested = join(root, "packages", "app");
-    mkdirSync(nested, { recursive: true });
-    expect(resolveToken(nested, {})).toBeUndefined();
-  });
-
-  it("does not read other keys out of the .env file", () => {
-    const dir = tempDir();
-    writeFileSync(join(dir, ENV_FILE), "BLIPR_TOPIC=leaked\nBLIPR_URL=https://leak.dev\n");
-    expect(resolveToken(dir, {})).toBeUndefined();
-    expect(resolveDefaultTopic(dir, {})).toBeUndefined();
-    expect(process.env.BLIPR_TOPIC).toBeUndefined();
   });
 });
