@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/applogico/blipr-mcp/compare/v0.4.1...v0.5.0) (2026-08-10)
+
+
+### Features
+
+* protected topic publish and reply via BLIPR_TOKEN ([e094db3](https://github.com/applogico/blipr-mcp/commit/e094db365080df04938de927d48027bf0d73a955))
+* protected topic publish and reply via BLIPR_TOKEN ([063acbf](https://github.com/applogico/blipr-mcp/commit/063acbfe2feec8ed31d51b763666ae4d912dab3b))
+
 ## [0.4.1](https://github.com/applogico/blipr-mcp/compare/v0.4.0...v0.4.1) (2026-08-02)
 
 
