@@ -1,0 +1,53 @@
+#!/bin/sh
+#
+# Prevent unsigned commits.
+#
+# Git creates the commit signature *after* pre-commit runs, so this hook
+# can't inspect the signature itself. Instead it verifies that signing is
+# configured and that a signing key is available, which is what determines
+# whether the resulting commit will be signed.
+
+# Merge/rebase commits without a message editor still run this hook; that's fine.
+
+gpgsign=$(git config --get commit.gpgsign)
+if [ "$gpgsign" != "true" ]; then
+	echo "commit rejected: signed commits are required." >&2
+	echo "Enable signing with:  git config commit.gpgsign true" >&2
+	exit 1
+fi
+
+format=$(git config --get gpg.format)
+case "$format" in
+ssh)
+	key=$(git config --get user.signingkey)
+	if [ -z "$key" ]; then
+		echo "commit rejected: gpg.format is 'ssh' but user.signingkey is not set." >&2
+		echo "Set your SSH signing key with:  git config user.signingkey <path-or-key>" >&2
+		exit 1
+	fi
+	;;
+x509)
+	key=$(git config --get user.signingkey)
+	if [ -z "$key" ]; then
+		echo "commit rejected: gpg.format is 'x509' but user.signingkey is not set." >&2
+		exit 1
+	fi
+	;;
+*)
+	# openpgp (default): require either an explicit signing key or a usable secret key.
+	key=$(git config --get user.signingkey)
+	if [ -z "$key" ]; then
+		if ! command -v gpg >/dev/null 2>&1; then
+			echo "commit rejected: gpg is required for signed commits but was not found." >&2
+			exit 1
+		fi
+		if ! gpg --list-secret-keys >/dev/null 2>&1 || [ -z "$(gpg --list-secret-keys 2>/dev/null)" ]; then
+			echo "commit rejected: no GPG secret key available to sign the commit." >&2
+			echo "Generate or import a key, then:  git config user.signingkey <key-id>" >&2
+			exit 1
+		fi
+	fi
+	;;
+esac
+
+exit 0
