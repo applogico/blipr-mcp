@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createServer, type BliprConfig } from "../src/server.js";
+import { createServer } from "../src/server.js";
+import type { BliprConfig } from "../src/publish.js";
+import { bodyOf, calls, installFetch, jsonRes } from "./helpers.js";
 
 /** Link a Client to a fresh server over an in-memory transport pair. */
-async function connect(cfg: BliprConfig) {
+async function connect(cfg: BliprConfig): Promise<Client> {
   const server = createServer(cfg);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: "test", version: "1.0.0" });
@@ -12,10 +14,26 @@ async function connect(cfg: BliprConfig) {
   return client;
 }
 
-const calls = () => (global.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
-const bodyOf = (i = 0) => JSON.parse(calls()[i][1].body);
+/** Every Blipr tool answers with exactly one text block, which is what the cast below relies on. */
+interface TextToolResult {
+  content: { type: string; text?: string }[];
+  isError?: boolean;
+}
+
+async function callTool(
+  client: Client,
+  name: string,
+  args: Record<string, unknown>
+): Promise<TextToolResult> {
+  return (await client.callTool({ name, arguments: args })) as TextToolResult;
+}
+
+const textOf = (res: TextToolResult): string => res.content[0].text ?? "";
+const jsonOf = (res: TextToolResult): Record<string, unknown> =>
+  JSON.parse(textOf(res)) as Record<string, unknown>;
+
 function mockFetch(status = 200, statusText = "OK", body: string | null = null) {
-  global.fetch = vi.fn(async () => new Response(body, { status, statusText })) as unknown as typeof fetch;
+  installFetch(async () => new Response(body, { status, statusText }));
 }
 
 describe("MCP server", () => {
@@ -37,12 +55,9 @@ describe("MCP server", () => {
   it("send_alert publishes the right JSON body and reports success", async () => {
     mockFetch();
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
-    const res: any = await client.callTool({
-      name: "send_alert",
-      arguments: { message: "hi", topic: "ops", priority: 4 },
-    });
+    const res = await callTool(client, "send_alert", { message: "hi", topic: "ops", priority: 4 });
     expect(res.isError ?? false).toBe(false);
-    expect(res.content[0].text).toMatch(/Sent to "ops"/);
+    expect(textOf(res)).toMatch(/Sent to "ops"/);
     expect(calls()[0][0]).toBe("https://blipr.dev/blip/ops");
     expect(bodyOf()).toMatchObject({ message: "hi", priority: 4 });
   });
@@ -50,11 +65,8 @@ describe("MCP server", () => {
   it("send_critical sends priority 5", async () => {
     mockFetch();
     const client = await connect({ bliprUrl: "https://blipr.dev" });
-    const res: any = await client.callTool({
-      name: "send_critical",
-      arguments: { message: "down", topic: "page" },
-    });
-    expect(res.content[0].text).toMatch(/Paged "page"/);
+    const res = await callTool(client, "send_critical", { message: "down", topic: "page" });
+    expect(textOf(res)).toMatch(/Paged "page"/);
     expect(calls()[0][0]).toBe("https://blipr.dev/blip/page");
     expect(bodyOf()).toMatchObject({ priority: 5 });
   });
@@ -62,9 +74,9 @@ describe("MCP server", () => {
   it("returns isError when Blipr responds with a failure", async () => {
     mockFetch(502, "Bad Gateway", "nope");
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
-    const res: any = await client.callTool({ name: "send_alert", arguments: { message: "hi" } });
+    const res = await callTool(client, "send_alert", { message: "hi" });
     expect(res.isError).toBe(true);
-    expect(res.content[0].text).toMatch(/502/);
+    expect(textOf(res)).toMatch(/502/);
   });
 
   /**
@@ -72,24 +84,19 @@ describe("MCP server", () => {
    * the reply GET returns whatever `replyBody` we want for the case.
    */
   function mockReplyFlow(replyBody: unknown, id = "abc123def456") {
-    const json = (obj: unknown) =>
-      new Response(JSON.stringify(obj), { status: 200, headers: { "Content-Type": "application/json" } });
-    global.fetch = vi.fn(async (url: any, init?: any) => {
-      const method = init?.method ?? "GET";
-      if (method === "POST") return json({ id, expected_reply: "binary", topic: "demo" });
-      return json(replyBody); // the reply GET
-    }) as unknown as typeof fetch;
+    installFetch(async (_url, init) => {
+      const method = init.method ?? "GET";
+      if (method === "POST") return jsonRes({ id, expected_reply: "binary", topic: "demo" });
+      return jsonRes(replyBody); // the reply GET
+    });
   }
 
   it("ask publishes reply:binary, captures the id, and returns the answer", async () => {
     mockReplyFlow({ status: "answered", value: "yes", replied_at: 1700000000 });
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
-    const res: any = await client.callTool({
-      name: "ask",
-      arguments: { message: "delete prod?", timeout_seconds: 5 },
-    });
+    const res = await callTool(client, "ask", { message: "delete prod?", timeout_seconds: 5 });
     expect(res.isError ?? false).toBe(false);
-    expect(JSON.parse(res.content[0].text)).toEqual({
+    expect(jsonOf(res)).toEqual({
       responded: true,
       approved: true,
       value: "yes",
@@ -109,12 +116,9 @@ describe("MCP server", () => {
   it("ask returns the timed-out shape when the reply never lands", async () => {
     mockReplyFlow({ status: "timeout" });
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
-    const res: any = await client.callTool({
-      name: "ask",
-      arguments: { message: "proceed?", timeout_seconds: 1 },
-    });
+    const res = await callTool(client, "ask", { message: "proceed?", timeout_seconds: 1 });
     expect(res.isError ?? false).toBe(false);
-    expect(JSON.parse(res.content[0].text)).toEqual({
+    expect(jsonOf(res)).toEqual({
       responded: false,
       approved: false,
       reason: "timeout",
@@ -126,12 +130,9 @@ describe("MCP server", () => {
   it("ask returns approved:false on a No — a refusal can never read as a go-ahead", async () => {
     mockReplyFlow({ status: "answered", value: "no", replied_at: 1700000005 });
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
-    const res: any = await client.callTool({
-      name: "ask",
-      arguments: { message: "delete prod?", timeout_seconds: 5 },
-    });
+    const res = await callTool(client, "ask", { message: "delete prod?", timeout_seconds: 5 });
     expect(res.isError ?? false).toBe(false);
-    expect(JSON.parse(res.content[0].text)).toEqual({
+    expect(jsonOf(res)).toEqual({
       responded: true,
       approved: false,
       value: "no",
@@ -141,41 +142,33 @@ describe("MCP server", () => {
   });
 
   it("ask surfaces isError (never approval) when the reply poll fails", async () => {
-    const json = (obj: unknown) =>
-      new Response(JSON.stringify(obj), { status: 200, headers: { "Content-Type": "application/json" } });
-    global.fetch = vi.fn(async (_url: any, init?: any) => {
-      const method = init?.method ?? "GET";
-      if (method === "POST") return json({ id: "id1", expected_reply: "binary", topic: "demo" });
+    installFetch(async (_url, init) => {
+      const method = init.method ?? "GET";
+      if (method === "POST") return jsonRes({ id: "id1", expected_reply: "binary", topic: "demo" });
       return new Response("boom", { status: 500, statusText: "Internal Server Error" }); // reply GET fails
-    }) as unknown as typeof fetch;
-    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
-    const res: any = await client.callTool({
-      name: "ask",
-      arguments: { message: "proceed?", timeout_seconds: 5 },
     });
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    const res = await callTool(client, "ask", { message: "proceed?", timeout_seconds: 5 });
     expect(res.isError).toBe(true);
-    expect(res.content[0].text).toMatch(/500/);
+    expect(textOf(res)).toMatch(/500/);
   });
 
   it("ask surfaces isError when the publish itself fails (no question, no approval)", async () => {
     mockFetch(503, "Service Unavailable", "down");
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
-    const res: any = await client.callTool({
-      name: "ask",
-      arguments: { message: "go?", timeout_seconds: 5 },
-    });
+    const res = await callTool(client, "ask", { message: "go?", timeout_seconds: 5 });
     expect(res.isError).toBe(true);
   });
 
   it("request_ack publishes reply:ack and returns acknowledged on answer", async () => {
     mockReplyFlow({ status: "answered", value: "ack", replied_at: 1700000042 });
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
-    const res: any = await client.callTool({
-      name: "request_ack",
-      arguments: { message: "starting the long run", timeout_seconds: 5 },
+    const res = await callTool(client, "request_ack", {
+      message: "starting the long run",
+      timeout_seconds: 5,
     });
     expect(res.isError ?? false).toBe(false);
-    expect(JSON.parse(res.content[0].text)).toEqual({
+    expect(jsonOf(res)).toEqual({
       responded: true,
       replied_at: 1700000042,
       message_id: "abc123def456",
@@ -187,11 +180,8 @@ describe("MCP server", () => {
   it("request_ack returns the timed-out shape when no ack arrives", async () => {
     mockReplyFlow({ status: "timeout" });
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
-    const res: any = await client.callTool({
-      name: "request_ack",
-      arguments: { message: "ack me", timeout_seconds: 1 },
-    });
-    expect(JSON.parse(res.content[0].text)).toEqual({
+    const res = await callTool(client, "request_ack", { message: "ack me", timeout_seconds: 1 });
+    expect(jsonOf(res)).toEqual({
       responded: false,
       reason: "timeout",
       message_id: "abc123def456",
@@ -202,12 +192,9 @@ describe("MCP server", () => {
   it("check_reply returns the stored answer when one exists (resume after a timeout)", async () => {
     mockFetch(200, "OK", JSON.stringify({ status: "answered", value: "yes", replied_at: 1700000099 }));
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
-    const res: any = await client.callTool({
-      name: "check_reply",
-      arguments: { message_id: "abc123def456" },
-    });
+    const res = await callTool(client, "check_reply", { message_id: "abc123def456" });
     expect(res.isError ?? false).toBe(false);
-    expect(JSON.parse(res.content[0].text)).toEqual({
+    expect(jsonOf(res)).toEqual({
       responded: true,
       value: "yes",
       replied_at: 1700000099,
@@ -219,10 +206,7 @@ describe("MCP server", () => {
   it("check_reply reports not-responded when there is no answer yet", async () => {
     mockFetch(200, "OK", JSON.stringify({ status: "pending" }));
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
-    const res: any = await client.callTool({
-      name: "check_reply",
-      arguments: { message_id: "abc123def456" },
-    });
-    expect(JSON.parse(res.content[0].text)).toEqual({ responded: false, reason: "timeout" });
+    const res = await callTool(client, "check_reply", { message_id: "abc123def456" });
+    expect(jsonOf(res)).toEqual({ responded: false, reason: "timeout" });
   });
 });
