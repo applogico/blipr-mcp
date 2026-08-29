@@ -71,7 +71,10 @@ echo my-project-alerts > .blipr-topic
 ```
 
 Then subscribe to the same topic (`my-project-alerts`) in the Blipr iOS app,
-and you'll get the agent's pushes on your phone.
+and you'll get the agent's pushes on your phone. On blipr.dev that subscribe,
+made while signed in, is also what creates the topic, so do it before the
+agent's first blip: publishing to a topic that does not exist returns 404. A
+self-hosted server still creates the topic on the first publish.
 
 ## Configuration
 
