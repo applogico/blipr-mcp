@@ -6,14 +6,10 @@ import {
   checkReply,
   type BliprConfig,
 } from "../src/publish.js";
+import { authOf, bodyOf, calls, installFetch as mockFetch, jsonRes } from "./helpers.js";
 
 const cfg: BliprConfig = { bliprUrl: "https://blipr.dev", defaultTopic: "default-topic" };
 
-function mockFetch(impl: () => Promise<Response>) {
-  global.fetch = vi.fn(impl) as unknown as typeof fetch;
-}
-const calls = () => (global.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
-const bodyOf = (i = 0) => JSON.parse(calls()[i][1].body);
 const ok = async () => new Response(null, { status: 200 });
 
 describe("publish", () => {
@@ -97,9 +93,6 @@ describe("publish", () => {
     await expect(publish({ message: "m", topic: "t" }, cfg)).rejects.toThrow(/Could not reach Blipr/);
   });
 });
-
-const jsonRes = (obj: unknown, status = 200) =>
-  new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
 
 describe("publishExpectingReply", () => {
   afterEach(() => vi.restoreAllMocks());
@@ -188,8 +181,8 @@ describe("pollReply", () => {
   it("aborts a hung request and counts it as a no-reply slice (never an answer)", async () => {
     vi.useFakeTimers();
     // a fetch that never resolves on its own — only its abort signal ends it
-    global.fetch = vi.fn(
-      (_url: any, init: any) =>
+    mockFetch(
+      (_url, init) =>
         new Promise<Response>((_resolve, reject) => {
           init.signal.addEventListener("abort", () => {
             const e = new Error("aborted");
@@ -197,7 +190,7 @@ describe("pollReply", () => {
             reject(e);
           });
         })
-    ) as unknown as typeof fetch;
+    );
     const p = pollReply("ops", "id1", { timeoutSeconds: 2, waitSeconds: 1 }, cfg);
     await vi.advanceTimersByTimeAsync(6000); // slice 1 deadline: wait(1s) + slack(5s)
     await vi.advanceTimersByTimeAsync(6000); // slice 2 deadline
@@ -233,7 +226,6 @@ describe("checkReply (single-shot resume)", () => {
 
 const TOKEN = "blipr_pk_secret123";
 const tokenCfg: BliprConfig = { ...cfg, token: TOKEN };
-const authOf = (i = 0) => calls()[i][1].headers?.Authorization;
 
 describe("bearer token", () => {
   afterEach(() => vi.restoreAllMocks());
@@ -276,7 +268,7 @@ describe("bearer token", () => {
   it("never leaks the token into an HTTP error message", async () => {
     mockFetch(async () => new Response("denied", { status: 403, statusText: "Forbidden" }));
     const err = await publish({ message: "m", topic: "@alice/alerts" }, tokenCfg).catch(
-      (e: Error) => e
+      (e: unknown) => e
     );
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).message).not.toContain(TOKEN);
@@ -287,7 +279,7 @@ describe("bearer token", () => {
       throw new Error("ECONNREFUSED");
     });
     const err = await publish({ message: "m", topic: "@alice/alerts" }, tokenCfg).catch(
-      (e: Error) => e
+      (e: unknown) => e
     );
     expect((err as Error).message).not.toContain(TOKEN);
   });

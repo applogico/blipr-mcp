@@ -20,12 +20,9 @@ export const TOPIC_FILE = ".blipr-topic";
 /** Where a resolved default topic came from. */
 export type TopicSource = "file" | "env";
 
-export interface DefaultTopic {
-  topic: string;
-  source: TopicSource;
-  /** Absolute path of the topic file, when `source` is "file". */
-  path?: string;
-}
+export type DefaultTopic =
+  | { topic: string; source: "file"; path: string }
+  | { topic: string; source: "env" };
 
 /**
  * Parse the topic out of a `.blipr-topic` file: the first non-empty line that
