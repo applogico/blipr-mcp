@@ -62,6 +62,20 @@ describe("MCP server", () => {
     expect(bodyOf()).toMatchObject({ message: "hi", priority: 4 });
   });
 
+  it("send_alert forwards markdown as the X-Markdown header", async () => {
+    mockFetch();
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    await callTool(client, "send_alert", { message: "**hi**", markdown: true });
+    expect(calls()[0][1].headers["X-Markdown"]).toBe("true");
+  });
+
+  it("send_alert sends no X-Markdown header when markdown is omitted", async () => {
+    mockFetch();
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    await callTool(client, "send_alert", { message: "hi" });
+    expect(calls()[0][1].headers).not.toHaveProperty("X-Markdown");
+  });
+
   it("send_critical sends priority 5", async () => {
     mockFetch();
     const client = await connect({ bliprUrl: "https://blipr.dev" });
@@ -111,6 +125,13 @@ describe("MCP server", () => {
     expect(calls()[1][0]).toMatch(
       /^https:\/\/blipr\.dev\/blip\/demo\/abc123def456\/reply\?wait=\d+$/
     );
+  });
+
+  it("ask forwards markdown as the X-Markdown header on the publish", async () => {
+    mockReplyFlow({ status: "answered", value: "yes" });
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    await callTool(client, "ask", { message: "**ship?**", markdown: true, timeout_seconds: 5 });
+    expect(calls()[0][1].headers["X-Markdown"]).toBe("true");
   });
 
   it("ask returns the timed-out shape when the reply never lands", async () => {

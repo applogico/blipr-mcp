@@ -36,7 +36,7 @@ export default tseslint.config(
     files: ["src/server.ts"],
     rules: {
       // Ratchet at createServer's current size; the target is the global 60, reached by splitting it per tool.
-      "max-lines-per-function": ["error", { max: 251, skipBlankLines: true, skipComments: true }],
+      "max-lines-per-function": ["error", { max: 234, skipBlankLines: true, skipComments: true }],
     },
   },
   {

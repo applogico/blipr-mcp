@@ -52,6 +52,8 @@ export interface PublishOpts {
   priority?: number;
   tags?: string[];
   click?: string;
+  /** Render the body as Markdown; sent as the `X-Markdown` header. */
+  markdown?: boolean;
   /** Ask the recipient for a reply: "binary" (yes/no) or "ack". */
   reply?: ReplyKind;
 }
@@ -118,7 +120,11 @@ async function postPublish(topic: string, opts: PublishOpts, cfg: BliprConfig): 
       url,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders(cfg) },
+        headers: {
+          "Content-Type": "application/json",
+          ...(opts.markdown ? { "X-Markdown": "true" } : {}),
+          ...authHeaders(cfg),
+        },
         body: JSON.stringify(buildPayload(opts)),
       },
       PUBLISH_TIMEOUT_MS
