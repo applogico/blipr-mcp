@@ -98,12 +98,13 @@ Send a push notification. Parameters:
   respects Focus) · `5` critical (breaks Focus).
 - `tags` — emoji shortcodes, e.g. `["warning"]`.
 - `click` — URL opened when the notification is tapped.
+- `markdown`: render the body as Markdown (bold, italics, links, code). Off by default.
 
 ### `send_critical`
 
 A priority-5 page for things that genuinely can't wait. Bypasses silent/Focus
 when the Blipr app has Apple's Critical Alerts entitlement enabled; otherwise
-it's delivered as time-sensitive.
+it's delivered as time-sensitive. Also takes `markdown`.
 
 ### `ask` — human-in-the-loop yes/no (blocks)
 
@@ -118,6 +119,7 @@ guessing.
   `.blipr-topic`, then `BLIPR_TOPIC`).
 - `priority` — defaults to `4` (high) since it needs an answer.
 - `tags` — emoji shortcodes, e.g. `["question"]`.
+- `markdown`: render the body as Markdown (bold, italics, links, code). Off by default.
 - `timeout_seconds` — how long to wait for your answer (default `120`).
 
 Returns `{ responded, approved, value, message_id, topic }`. **Branch on

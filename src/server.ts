@@ -11,6 +11,21 @@ import {
 /** Default overall time to wait for a human reply before giving up. */
 const DEFAULT_REPLY_TIMEOUT_SECONDS = 120;
 
+/** `topic` input shared by every publishing tool. */
+const topicSchema = z
+  .string()
+  .optional()
+  .describe(
+    "Topic to publish to. Pass it explicitly — each project should use its own topic. " +
+      "When omitted, falls back to the project's `.blipr-topic` file, then the BLIPR_TOPIC env var."
+  );
+
+/** `markdown` input shared by every publishing tool. */
+const markdownSchema = z
+  .boolean()
+  .optional()
+  .describe("Render the body as Markdown (bold, italics, links, code). Off by default.");
+
 /** Build a configured Blipr MCP server with its tools registered. */
 export function createServer(cfg: BliprConfig): McpServer {
   const server = new McpServer({ name: "blipr", version: "0.1.0" });
@@ -24,13 +39,7 @@ export function createServer(cfg: BliprConfig): McpServer {
       inputSchema: {
         message: z.string().describe("The alert body — what happened or what you need."),
         title: z.string().optional().describe("Short title, shown bold above the message."),
-        topic: z
-          .string()
-          .optional()
-          .describe(
-            "Topic to publish to. Pass it explicitly — each project should use its own topic. " +
-              "When omitted, falls back to the project's `.blipr-topic` file, then the BLIPR_TOPIC env var."
-          ),
+        topic: topicSchema,
         priority: z
           .number()
           .int()
@@ -43,11 +52,12 @@ export function createServer(cfg: BliprConfig): McpServer {
           .optional()
           .describe('Tags / emoji shortcodes, e.g. ["warning", "rocket"].'),
         click: z.string().url().optional().describe("URL opened when the notification is tapped."),
+        markdown: markdownSchema,
       },
     },
-    async ({ message, title, topic, priority, tags, click }) => {
+    async ({ message, title, topic, priority, tags, click, markdown }) => {
       try {
-        const sent = await publish({ message, title, topic, priority, tags, click }, cfg);
+        const sent = await publish({ message, title, topic, priority, tags, click, markdown }, cfg);
         return { content: [{ type: "text", text: `Sent to "${sent}" (priority ${priority ?? 3}).` }] };
       } catch (e) {
         return { content: [{ type: "text", text: (e as Error).message }], isError: true };
@@ -64,18 +74,16 @@ export function createServer(cfg: BliprConfig): McpServer {
       inputSchema: {
         message: z.string().describe("What is wrong or what you need, urgently."),
         title: z.string().optional().describe("Short title."),
-        topic: z
-          .string()
-          .optional()
-          .describe(
-            "Topic to publish to. Pass it explicitly — each project should use its own topic. " +
-              "When omitted, falls back to the project's `.blipr-topic` file, then the BLIPR_TOPIC env var."
-          ),
+        topic: topicSchema,
+        markdown: markdownSchema,
       },
     },
-    async ({ message, title, topic }) => {
+    async ({ message, title, topic, markdown }) => {
       try {
-        const sent = await publish({ message, title, topic, priority: 5, tags: ["rotating_light"] }, cfg);
+        const sent = await publish(
+          { message, title, topic, priority: 5, tags: ["rotating_light"], markdown },
+          cfg
+        );
         return { content: [{ type: "text", text: `Paged "${sent}" (priority 5 / critical).` }] };
       } catch (e) {
         return { content: [{ type: "text", text: (e as Error).message }], isError: true };
@@ -99,13 +107,7 @@ export function createServer(cfg: BliprConfig): McpServer {
       inputSchema: {
         message: z.string().describe("The yes/no question to ask the human."),
         title: z.string().optional().describe("Short title, shown bold above the question."),
-        topic: z
-          .string()
-          .optional()
-          .describe(
-            "Topic to publish to. Pass it explicitly — each project should use its own topic. " +
-              "When omitted, falls back to the project's `.blipr-topic` file, then the BLIPR_TOPIC env var."
-          ),
+        topic: topicSchema,
         priority: z
           .number()
           .int()
@@ -117,6 +119,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .array(z.string())
           .optional()
           .describe('Tags / emoji shortcodes, e.g. ["question"].'),
+        markdown: markdownSchema,
         timeout_seconds: z
           .number()
           .int()
@@ -125,10 +128,10 @@ export function createServer(cfg: BliprConfig): McpServer {
           .describe(`How long to block waiting for the answer before giving up. Defaults to ${DEFAULT_REPLY_TIMEOUT_SECONDS}s. Some MCP clients cancel a long tool call before this elapses; on timeout or cancel, use check_reply with the returned message_id (replies are retained ~30 min).`),
       },
     },
-    async ({ message, title, topic, priority, tags, timeout_seconds }) => {
+    async ({ message, title, topic, priority, tags, markdown, timeout_seconds }) => {
       try {
         const { topic: sent, id } = await publishExpectingReply(
-          { message, title, topic, priority: priority ?? 4, tags, reply: "binary" },
+          { message, title, topic, priority: priority ?? 4, tags, markdown, reply: "binary" },
           cfg
         );
         const outcome = await pollReply(
@@ -168,13 +171,7 @@ export function createServer(cfg: BliprConfig): McpServer {
       inputSchema: {
         message: z.string().describe("What the human needs to see and acknowledge."),
         title: z.string().optional().describe("Short title, shown bold above the message."),
-        topic: z
-          .string()
-          .optional()
-          .describe(
-            "Topic to publish to. Pass it explicitly — each project should use its own topic. " +
-              "When omitted, falls back to the project's `.blipr-topic` file, then the BLIPR_TOPIC env var."
-          ),
+        topic: topicSchema,
         priority: z
           .number()
           .int()
@@ -186,6 +183,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .array(z.string())
           .optional()
           .describe('Tags / emoji shortcodes, e.g. ["eyes"].'),
+        markdown: markdownSchema,
         timeout_seconds: z
           .number()
           .int()
@@ -194,10 +192,10 @@ export function createServer(cfg: BliprConfig): McpServer {
           .describe(`How long to block waiting for the acknowledgement before giving up. Defaults to ${DEFAULT_REPLY_TIMEOUT_SECONDS}s. Some MCP clients cancel a long tool call early; on timeout or cancel, use check_reply with the returned message_id (replies are retained ~30 min).`),
       },
     },
-    async ({ message, title, topic, priority, tags, timeout_seconds }) => {
+    async ({ message, title, topic, priority, tags, markdown, timeout_seconds }) => {
       try {
         const { topic: sent, id } = await publishExpectingReply(
-          { message, title, topic, priority: priority ?? 4, tags, reply: "ack" },
+          { message, title, topic, priority: priority ?? 4, tags, markdown, reply: "ack" },
           cfg
         );
         const outcome = await pollReply(

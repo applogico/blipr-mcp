@@ -63,6 +63,19 @@ describe("publish", () => {
     expect(bodyOf().title).toBe("Deploy ✅");
   });
 
+  it("sets X-Markdown: true when markdown is true", async () => {
+    mockFetch(ok);
+    await publish({ message: "**m**", topic: "t", markdown: true }, cfg);
+    expect(calls()[0][1].headers["X-Markdown"]).toBe("true");
+    expect(bodyOf()).toEqual({ message: "**m**" });
+  });
+
+  it("sends no X-Markdown header when markdown is omitted", async () => {
+    mockFetch(ok);
+    await publish({ message: "m", topic: "t" }, cfg);
+    expect(calls()[0][1].headers).not.toHaveProperty("X-Markdown");
+  });
+
   it("omits optional fields when not provided", async () => {
     mockFetch(ok);
     await publish({ message: "m", topic: "t" }, cfg);
