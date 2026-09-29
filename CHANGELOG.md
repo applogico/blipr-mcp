@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/applogico/blipr-mcp/compare/v0.5.0...v0.6.0) (2026-09-28)
+
+
+### Features
+
+* markdown option on the publishing tools ([#25](https://github.com/applogico/blipr-mcp/issues/25)) ([fcec30d](https://github.com/applogico/blipr-mcp/commit/fcec30da025e83bdecfe9651c6d1ac16b81dbe13))
+
 ## [0.5.0](https://github.com/applogico/blipr-mcp/compare/v0.4.1...v0.5.0) (2026-08-10)
 
 
