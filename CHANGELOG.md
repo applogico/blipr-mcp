@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/applogico/blipr-mcp/compare/v0.6.0...v0.6.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* **deps:** pick up patched hono, @hono/node-server, fast-uri, ip-address and qs ([#27](https://github.com/applogico/blipr-mcp/issues/27)) ([0a560e2](https://github.com/applogico/blipr-mcp/commit/0a560e2d13962f0f61cd0e8fa04feaa5dd2b4983))
+
 ## [0.6.0](https://github.com/applogico/blipr-mcp/compare/v0.5.0...v0.6.0) (2026-09-28)
 
 
