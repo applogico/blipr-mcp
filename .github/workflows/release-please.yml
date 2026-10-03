@@ -57,3 +57,20 @@ jobs:
           priority: 3
           tags: package
           click: ${{ needs.release-please.outputs.html_url }}
+
+  # Runs only when a needed job failed; a skipped release is not a failure.
+  blip-on-failure:
+    name: Blip when the release fails
+    needs: [release-please, publish]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Blip the failure to blipr-releases
+        uses: applogico/blipr-action@v1
+        with:
+          topic: blipr-releases
+          title: "@blipr/mcp release failed"
+          message: "The release workflow failed. Nothing reached npm."
+          priority: 4
+          tags: x
+          click: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
