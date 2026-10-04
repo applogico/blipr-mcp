@@ -1,0 +1,33 @@
+version: 2
+updates:
+  # npm: prod bumps are fix so release-please ships them; dev bumps are build and don't release.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "14:00"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: fix(deps)
+      prefix-development: build(deps)
+    groups:
+      npm-production:
+        dependency-type: production
+        update-types: [minor, patch]
+      npm-development:
+        dependency-type: development
+        update-types: [minor, patch]
+  # Workflow actions are CI-only, so they never cut a release.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "14:00"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: ci(deps)
+    groups:
+      actions:
+        update-types: [minor, patch]
