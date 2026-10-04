@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/applogico/blipr-mcp/compare/v0.6.1...v0.6.2) (2026-10-04)
+
+
+### Bug Fixes
+
+* **deps:** bump @modelcontextprotocol/sdk ([#32](https://github.com/applogico/blipr-mcp/issues/32)) ([89f6abe](https://github.com/applogico/blipr-mcp/commit/89f6abefa9f0697fb2946c44db4145c164e02833))
+
 ## [0.6.1](https://github.com/applogico/blipr-mcp/compare/v0.6.0...v0.6.1) (2026-10-03)
 
 
