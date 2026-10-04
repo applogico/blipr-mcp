@@ -18,6 +18,10 @@ updates:
       npm-development:
         dependency-type: development
         update-types: [minor, patch]
+    # TS 7 is held until typescript-eslint supports it (https://github.com/typescript-eslint/typescript-eslint/issues/10940).
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
   # Workflow actions are CI-only, so they never cut a release.
   - package-ecosystem: github-actions
     directory: /
