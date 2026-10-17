@@ -22,6 +22,9 @@ updates:
     ignore:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+      # Types track the oldest supported Node (engines), not the newest.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
   # Workflow actions are CI-only, so they never cut a release.
   - package-ecosystem: github-actions
     directory: /
