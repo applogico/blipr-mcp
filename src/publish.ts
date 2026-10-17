@@ -27,7 +27,7 @@ const SERVER_WAIT_CAP_SECONDS = 300;
 async function fetchWithTimeout(
   url: string,
   init: RequestInit,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => {
@@ -92,7 +92,7 @@ function resolveTopic(opts: PublishOpts, cfg: BliprConfig): string {
   if (!topic) {
     throw new Error(
       "No topic given and no default is configured. Pass `topic` in the tool call, " +
-        "or set a per-project default in a `.blipr-topic` file (or the BLIPR_TOPIC env var)."
+        "or set a per-project default in a `.blipr-topic` file (or the BLIPR_TOPIC env var).",
     );
   }
   return topic;
@@ -110,7 +110,11 @@ function buildPayload(opts: PublishOpts): Record<string, unknown> {
 }
 
 /** POST the publish body and return the raw Response (after an ok() check). */
-async function postPublish(topic: string, opts: PublishOpts, cfg: BliprConfig): Promise<Response> {
+async function postPublish(
+  topic: string,
+  opts: PublishOpts,
+  cfg: BliprConfig,
+): Promise<Response> {
   const base = cfg.bliprUrl.replace(/\/+$/, "");
   const url = `${base}/blip/${encodeTopicPath(topic)}`;
 
@@ -127,17 +131,23 @@ async function postPublish(topic: string, opts: PublishOpts, cfg: BliprConfig): 
         },
         body: JSON.stringify(buildPayload(opts)),
       },
-      PUBLISH_TIMEOUT_MS
+      PUBLISH_TIMEOUT_MS,
     );
   } catch (e) {
     const err = e as Error;
-    const reason = isAbort(err) ? `timed out after ${PUBLISH_TIMEOUT_MS / 1000}s` : err.message;
-    throw new Error(`Could not reach Blipr at ${base}: ${reason}`);
+    const reason = isAbort(err)
+      ? `timed out after ${PUBLISH_TIMEOUT_MS / 1000}s`
+      : err.message;
+    throw new Error(`Could not reach Blipr at ${base}: ${reason}`, {
+      cause: e,
+    });
   }
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`Blipr returned ${res.status} ${res.statusText}${body ? ` — ${body}` : ""}`);
+    throw new Error(
+      `Blipr returned ${res.status} ${res.statusText}${body ? ` — ${body}` : ""}`,
+    );
   }
   return res;
 }
@@ -149,7 +159,10 @@ async function postPublish(topic: string, opts: PublishOpts, cfg: BliprConfig): 
  * is UTF-8, so titles/messages with emoji or accents survive — HTTP headers are
  * Latin-1 only and would corrupt or reject them.
  */
-export async function publish(opts: PublishOpts, cfg: BliprConfig): Promise<string> {
+export async function publish(
+  opts: PublishOpts,
+  cfg: BliprConfig,
+): Promise<string> {
   const topic = resolveTopic(opts, cfg);
   await postPublish(topic, opts, cfg);
   return topic;
@@ -162,7 +175,7 @@ export async function publish(opts: PublishOpts, cfg: BliprConfig): Promise<stri
  */
 export async function publishExpectingReply(
   opts: PublishOpts & { reply: ReplyKind },
-  cfg: BliprConfig
+  cfg: BliprConfig,
 ): Promise<PublishResult> {
   const topic = resolveTopic(opts, cfg);
   const res = await postPublish(topic, opts, cfg);
@@ -171,10 +184,17 @@ export async function publishExpectingReply(
   try {
     parsed = (await res.json()) as typeof parsed;
   } catch (e) {
-    throw new Error(`Blipr publish returned an unparseable response: ${(e as Error).message}`);
+    throw new Error(
+      `Blipr publish returned an unparseable response: ${(e as Error).message}`,
+      {
+        cause: e,
+      },
+    );
   }
   if (!parsed.id) {
-    throw new Error("Blipr publish response did not include a message id — cannot await a reply.");
+    throw new Error(
+      "Blipr publish response did not include a message id — cannot await a reply.",
+    );
   }
   return { topic, id: parsed.id, expectedReply: parsed.expected_reply };
 }
@@ -192,7 +212,11 @@ export interface PollOpts {
 }
 
 /** Build the reply endpoint base URL for a topic + message id. */
-function replyUrlFor(topic: string, messageId: string, cfg: BliprConfig): { base: string; replyUrl: string } {
+function replyUrlFor(
+  topic: string,
+  messageId: string,
+  cfg: BliprConfig,
+): { base: string; replyUrl: string } {
   const base = cfg.bliprUrl.replace(/\/+$/, "");
   return {
     base,
@@ -209,25 +233,29 @@ async function pollOnce(
   replyUrl: string,
   wait: number,
   base: string,
-  cfg: BliprConfig
+  cfg: BliprConfig,
 ): Promise<ReplyOutcome | null> {
   let res: Response;
   try {
     res = await fetchWithTimeout(
       `${replyUrl}?wait=${wait}`,
       { method: "GET", headers: authHeaders(cfg) },
-      wait * 1000 + POLL_SLACK_MS
+      wait * 1000 + POLL_SLACK_MS,
     );
   } catch (e) {
     const err = e as Error;
     // Our own per-request deadline fired (a hung / black-holed connection): no
     // reply this slice — NEVER an answer. Genuine network errors fail closed.
     if (isAbort(err)) return null;
-    throw new Error(`Could not reach Blipr at ${base}: ${err.message}`);
+    throw new Error(`Could not reach Blipr at ${base}: ${err.message}`, {
+      cause: e,
+    });
   }
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`Blipr reply poll returned ${res.status} ${res.statusText}${body ? ` — ${body}` : ""}`);
+    throw new Error(
+      `Blipr reply poll returned ${res.status} ${res.statusText}${body ? ` — ${body}` : ""}`,
+    );
   }
   const data = (await res.json().catch(() => ({}))) as {
     status?: string;
@@ -235,7 +263,11 @@ async function pollOnce(
     replied_at?: number;
   };
   if (data.status === "answered" && typeof data.value === "string") {
-    return { status: "answered", value: data.value, repliedAt: data.replied_at };
+    return {
+      status: "answered",
+      value: data.value,
+      repliedAt: data.replied_at,
+    };
   }
   return null; // "pending" / "timeout" / malformed → nothing yet
 }
@@ -250,7 +282,7 @@ export async function pollReply(
   topic: string,
   messageId: string,
   opts: PollOpts,
-  cfg: BliprConfig
+  cfg: BliprConfig,
 ): Promise<ReplyOutcome> {
   const { base, replyUrl } = replyUrlFor(topic, messageId, cfg);
   const perRequestWait = Math.max(1, opts.waitSeconds ?? 30);
@@ -275,7 +307,7 @@ export async function checkReply(
   topic: string,
   messageId: string,
   waitSeconds: number,
-  cfg: BliprConfig
+  cfg: BliprConfig,
 ): Promise<ReplyOutcome> {
   const { base, replyUrl } = replyUrlFor(topic, messageId, cfg);
   const wait = Math.max(0, Math.min(waitSeconds, SERVER_WAIT_CAP_SECONDS));
