@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/applogico/blipr-mcp/compare/v0.6.2...v0.6.3) (2026-10-17)
+
+
+### Bug Fixes
+
+* **deps:** bump proxy-addr from 2.0.7 to 2.0.8 ([#44](https://github.com/applogico/blipr-mcp/issues/44)) ([a360fc3](https://github.com/applogico/blipr-mcp/commit/a360fc3e2d15e2c25339a8542f270ec2c0890fed))
+
 ## [0.6.2](https://github.com/applogico/blipr-mcp/compare/v0.6.1...v0.6.2) (2026-10-04)
 
 
