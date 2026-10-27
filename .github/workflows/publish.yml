@@ -1,7 +1,7 @@
 name: Publish to npm
 
 # Reusable: called by release-please.yml only when a release is created (the
-# release PR is merged). Publishes the current version to npm via OIDC Trusted
+# release PR is merged). Stages the current version on npm (approve it on npmjs.com) via OIDC Trusted
 # Publishing. release-please owns the version bump and the git tag/release, so
 # there is no version-diff guard or tagging here.
 on:
@@ -36,5 +36,5 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Publish
-        run: npm publish --access public
+      - name: Stage on npm (approve on npmjs.com to publish)
+        run: npm stage publish --access public
