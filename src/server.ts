@@ -27,6 +27,10 @@ const markdownSchema = z
   .describe("Render the body as Markdown (bold, italics, links, code). Off by default.");
 
 /** Build a configured Blipr MCP server with its tools registered. */
+// Zod 4 drops additionalProperties: false from tool schemas; OpenAI strict mode needs it.
+const toolInput = <T extends z.ZodRawShape>(shape: T) =>
+  z.object(shape).meta({ additionalProperties: false });
+
 export function createServer(cfg: BliprConfig): McpServer {
   const server = new McpServer({ name: "blipr", version: "0.1.0" });
 
@@ -36,7 +40,7 @@ export function createServer(cfg: BliprConfig): McpServer {
       title: "Send a Blipr alert",
       description:
         "Send a push notification to the user's phone via Blipr. Use this to reach the human: a long task finished, a build broke, you need approval, or you're blocked and need input. Priority 1 (silent) to 5 (critical); defaults to 3.",
-      inputSchema: {
+      inputSchema: toolInput({
         message: z.string().describe("The alert body — what happened or what you need."),
         title: z.string().optional().describe("Short title, shown bold above the message."),
         topic: topicSchema,
@@ -51,9 +55,9 @@ export function createServer(cfg: BliprConfig): McpServer {
           .array(z.string())
           .optional()
           .describe('Tags / emoji shortcodes, e.g. ["warning", "rocket"].'),
-        click: z.string().url().optional().describe("URL opened when the notification is tapped."),
+        click: z.url().optional().describe("URL opened when the notification is tapped."),
         markdown: markdownSchema,
-      },
+      }),
     },
     async ({ message, title, topic, priority, tags, click, markdown }) => {
       try {
@@ -71,12 +75,12 @@ export function createServer(cfg: BliprConfig): McpServer {
       title: "Page the user (critical)",
       description:
         "Send a priority-5 critical page. Use ONLY for things that genuinely cannot wait (production down, urgent approval, safety). Bypasses silent/Focus when the Blipr app has Apple's Critical Alerts entitlement enabled; otherwise it is delivered as time-sensitive.",
-      inputSchema: {
+      inputSchema: toolInput({
         message: z.string().describe("What is wrong or what you need, urgently."),
         title: z.string().optional().describe("Short title."),
         topic: topicSchema,
         markdown: markdownSchema,
-      },
+      }),
     },
     async ({ message, title, topic, markdown }) => {
       try {
@@ -104,7 +108,7 @@ export function createServer(cfg: BliprConfig): McpServer {
         "branch on `approved`: it is true ONLY when the human tapped Yes, and false on No, a timeout, or an error. " +
         "Never treat a non-approval as a go-ahead. On timeout (or if your client cancels the call) the human may " +
         "still answer within ~30 min — call check_reply with the returned message_id to resume rather than re-asking.",
-      inputSchema: {
+      inputSchema: toolInput({
         message: z.string().describe("The yes/no question to ask the human."),
         title: z.string().optional().describe("Short title, shown bold above the question."),
         topic: topicSchema,
@@ -126,7 +130,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .positive()
           .optional()
           .describe(`How long to block waiting for the answer before giving up. Defaults to ${DEFAULT_REPLY_TIMEOUT_SECONDS}s. Some MCP clients cancel a long tool call before this elapses; on timeout or cancel, use check_reply with the returned message_id (replies are retained ~30 min).`),
-      },
+      }),
     },
     async ({ message, title, topic, priority, tags, markdown, timeout_seconds }) => {
       try {
@@ -168,7 +172,7 @@ export function createServer(cfg: BliprConfig): McpServer {
         "does not return until the human acks or it times out. Returns { responded, message_id, topic } plus " +
         '`replied_at` when acked (responded:true), or { responded: false, reason: "timeout" } if no one acks in ' +
         "time. On timeout/cancel, call check_reply with the returned message_id (replies are retained ~30 min).",
-      inputSchema: {
+      inputSchema: toolInput({
         message: z.string().describe("What the human needs to see and acknowledge."),
         title: z.string().optional().describe("Short title, shown bold above the message."),
         topic: topicSchema,
@@ -190,7 +194,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .positive()
           .optional()
           .describe(`How long to block waiting for the acknowledgement before giving up. Defaults to ${DEFAULT_REPLY_TIMEOUT_SECONDS}s. Some MCP clients cancel a long tool call early; on timeout or cancel, use check_reply with the returned message_id (replies are retained ~30 min).`),
-      },
+      }),
     },
     async ({ message, title, topic, priority, tags, markdown, timeout_seconds }) => {
       try {
@@ -226,7 +230,7 @@ export function createServer(cfg: BliprConfig): McpServer {
         'to briefly long-poll. Returns { responded, value?, replied_at? } — `value` is "yes"/"no" (a yes/no ' +
         'question) or "ack". For an approval gate, only proceed when value === "yes". Replies are kept only ~30 ' +
         "minutes after the original message was sent.",
-      inputSchema: {
+      inputSchema: toolInput({
         message_id: z.string().describe("The message_id returned by a prior ask / request_ack call."),
         topic: z
           .string()
@@ -242,7 +246,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .min(0)
           .optional()
           .describe("Seconds to long-poll for an answer (0 = instant check; default 0)."),
-      },
+      }),
     },
     async ({ message_id, topic, wait_seconds }) => {
       try {
