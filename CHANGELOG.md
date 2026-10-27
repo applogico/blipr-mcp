@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.3](https://github.com/applogico/blipr-mcp/compare/v0.6.2...v0.6.3) (2026-10-27)
+
+
+### Bug Fixes
+
+* **deps:** bump @modelcontextprotocol/sdk ([#48](https://github.com/applogico/blipr-mcp/issues/48)) ([30ffa00](https://github.com/applogico/blipr-mcp/commit/30ffa0023b15a2319404bcc8271f1563de0f06d2))
+* **deps:** bump body-parser from 2.3.0 to 2.4.0 ([#53](https://github.com/applogico/blipr-mcp/issues/53)) ([38daa83](https://github.com/applogico/blipr-mcp/commit/38daa8329110922fa41256206c07df91dea60a0c))
+* **deps:** bump fast-uri from 3.1.8 to 3.1.9 ([#54](https://github.com/applogico/blipr-mcp/issues/54)) ([e947ef2](https://github.com/applogico/blipr-mcp/commit/e947ef203a896b8950727dcab4cdbe0e65e2fb9f))
+* **deps:** bump ip-address from 10.7.3 to 10.7.5 ([#55](https://github.com/applogico/blipr-mcp/issues/55)) ([0edf296](https://github.com/applogico/blipr-mcp/commit/0edf296374ac6e0ae62877543f33f951f14222a2))
+* **deps:** bump proxy-addr from 2.0.7 to 2.0.8 ([#44](https://github.com/applogico/blipr-mcp/issues/44)) ([a360fc3](https://github.com/applogico/blipr-mcp/commit/a360fc3e2d15e2c25339a8542f270ec2c0890fed))
+* **deps:** bump zod from 3.25.76 to 4.6.7 ([#50](https://github.com/applogico/blipr-mcp/issues/50)) ([137ef45](https://github.com/applogico/blipr-mcp/commit/137ef451fb3247960e59d3e73c10652cc75e06be))
+
 ## [0.6.2](https://github.com/applogico/blipr-mcp/compare/v0.6.1...v0.6.2) (2026-10-04)
 
 
