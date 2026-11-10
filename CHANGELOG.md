@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.4](https://github.com/applogico/blipr-mcp/compare/v0.6.3...v0.6.4) (2026-11-10)
+
+
+### Bug Fixes
+
+* **deps:** bump @hono/node-server from 1.19.17 to 2.1.6 ([#62](https://github.com/applogico/blipr-mcp/issues/62)) ([29f58ea](https://github.com/applogico/blipr-mcp/commit/29f58eaca8b6b0fe548682f780bba795c1b7844b))
+* **deps:** bump @modelcontextprotocol/sdk ([#58](https://github.com/applogico/blipr-mcp/issues/58)) ([976ed50](https://github.com/applogico/blipr-mcp/commit/976ed50e6f1c8b59ad582c02e6c4722517792737))
+
 ## [0.6.3](https://github.com/applogico/blipr-mcp/compare/v0.6.2...v0.6.3) (2026-10-27)
 
 
