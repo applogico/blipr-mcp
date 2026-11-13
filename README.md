@@ -106,20 +106,21 @@ A priority-5 page for things that genuinely can't wait. Bypasses silent/Focus
 when the Blipr app has Apple's Critical Alerts entitlement enabled; otherwise
 it's delivered as time-sensitive. Also takes `markdown`.
 
-### `ask` — human-in-the-loop yes/no (blocks)
+### `ask`: human-in-the-loop yes/no or multiple choice (blocks)
 
-Send a **yes/no question** to your phone and **block until you tap an answer**,
+Send a **yes/no or multiple-choice question** to your phone and **block until you tap an answer**,
 then return it. This is an approval gate: the agent calls it before doing
 something consequential or irreversible and waits for your decision instead of
 guessing.
 
-- `message` (required) — the yes/no question.
+- `message` (required): the question.
 - `title` — short bold title.
 - `topic` — topic to publish to; pass it explicitly (falls back to
   `.blipr-topic`, then `BLIPR_TOPIC`).
 - `priority` — defaults to `4` (high) since it needs an answer.
 - `tags` — emoji shortcodes, e.g. `["question"]`.
 - `markdown`: render the body as Markdown (bold, italics, links, code). Off by default.
+- `options`: 2 to 5 distinct choices. Makes it a multiple-choice question; omit for yes/no.
 - `timeout_seconds` — how long to wait for your answer (default `120`).
 
 Returns `{ responded, approved, value, message_id, topic }`. **Branch on
@@ -130,7 +131,11 @@ go-ahead. On a timeout you get
 it times out (or your MCP client cancels the call), you can still answer for
 ~30 min — pass the returned `message_id` to `check_reply` to resume.
 
-Under the hood it publishes with `reply: "binary"`, captures the message `id`
+With `options`, it returns `{ responded, value, message_id, topic }` with no
+`approved`. `value` is the option you tapped, exactly as sent.
+
+Under the hood it publishes with `reply: "binary"` (or `reply: "choice"` with
+`options`), captures the message `id`
 from the publish response, then long-polls
 `GET /blip/<topic>/<id>/reply?wait=…` until you answer or the timeout
 budget runs out.
@@ -139,7 +144,7 @@ budget runs out.
 
 Send a message that you must **acknowledge**, and **block until you tap
 "Acknowledge"**. Use it when the human has to see and confirm something before
-the agent continues. Same parameters as `ask`; publishes with `reply: "ack"`.
+the agent continues. Same parameters as `ask` except `options`; publishes with `reply: "ack"`.
 
 Returns `{ responded, message_id, topic }` plus `replied_at` when acked, or
 `{ responded: false, reason: "timeout", … }`. As with `ask`, on a timeout you can
@@ -151,7 +156,7 @@ Look up whether you've replied to an earlier `ask`/`request_ack` — handy if th
 blocking call timed out or your MCP client cancelled it. Pass the `message_id`
 (and `topic`) it returned; non-blocking by default, or set `wait_seconds` to
 briefly long-poll. Returns `{ responded, value?, replied_at? }` (`value` is
-`"yes"` / `"no"` / `"ack"`). Replies are kept ~30 minutes after the original
+`"yes"` / `"no"` / `"ack"`, or the chosen option). Replies are kept ~30 minutes after the original
 message was sent.
 
 ## Example prompts
