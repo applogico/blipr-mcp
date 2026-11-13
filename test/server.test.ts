@@ -181,6 +181,66 @@ describe("MCP server", () => {
     expect(res.isError).toBe(true);
   });
 
+  it("ask with options publishes reply:choice and returns the chosen option, no approved", async () => {
+    mockReplyFlow({ status: "answered", value: "Hold", replied_at: 1700000010 });
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    const res = await callTool(client, "ask", {
+      message: "next step?",
+      options: [" Ship ", "Hold", "Stop"],
+      timeout_seconds: 5,
+    });
+    expect(res.isError ?? false).toBe(false);
+    expect(jsonOf(res)).toEqual({
+      responded: true,
+      value: "Hold",
+      message_id: "abc123def456",
+      topic: "demo",
+    });
+    expect(bodyOf(0)).toMatchObject({
+      message: "next step?",
+      reply: "choice",
+      options: ["Ship", "Hold", "Stop"],
+    });
+  });
+
+  it("ask with options returns the timed-out shape without approved", async () => {
+    mockReplyFlow({ status: "timeout" });
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    const res = await callTool(client, "ask", {
+      message: "next step?",
+      options: ["Ship", "Hold"],
+      timeout_seconds: 1,
+    });
+    expect(jsonOf(res)).toEqual({
+      responded: false,
+      reason: "timeout",
+      message_id: "abc123def456",
+      topic: "demo",
+    });
+  });
+
+  it("ask rejects duplicate or empty options without publishing", async () => {
+    mockFetch();
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    const dupes = await callTool(client, "ask", { message: "pick", options: ["A", "A"] });
+    expect(dupes.isError).toBe(true);
+    expect(textOf(dupes)).toMatch(/distinct/);
+    const empty = await callTool(client, "ask", { message: "pick", options: ["A", ""] });
+    expect(empty.isError).toBe(true);
+    expect(textOf(empty)).toMatch(/empty/);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("ask rejects more than 5 or fewer than 2 options without publishing", async () => {
+    mockFetch();
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    for (const options of [["A"], ["1", "2", "3", "4", "5", "6"]]) {
+      const res = await callTool(client, "ask", { message: "pick", options });
+      expect(res.isError).toBe(true);
+    }
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it("request_ack publishes reply:ack and returns acknowledged on answer", async () => {
     mockReplyFlow({ status: "answered", value: "ack", replied_at: 1700000042 });
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });

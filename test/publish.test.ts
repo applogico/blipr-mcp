@@ -4,6 +4,7 @@ import {
   publishExpectingReply,
   pollReply,
   checkReply,
+  validateChoiceOptions,
   type BliprConfig,
 } from "../src/publish.js";
 import { authOf, bodyOf, calls, installFetch as mockFetch, jsonRes } from "./helpers.js";
@@ -118,6 +119,15 @@ describe("publishExpectingReply", () => {
     );
     expect(bodyOf()).toMatchObject({ message: "delete prod?", reply: "binary" });
     expect(result).toEqual({ topic: "ops", id: "abc123def456", expectedReply: "binary" });
+  });
+
+  it("sends choice options in the JSON body", async () => {
+    mockFetch(async () => jsonRes({ id: "abc123def456", expected_reply: "choice", topic: "ops" }));
+    await publishExpectingReply(
+      { message: "which?", topic: "ops", reply: "choice", options: ["A", "B"] },
+      cfg
+    );
+    expect(bodyOf()).toEqual({ message: "which?", reply: "choice", options: ["A", "B"] });
   });
 
   it("throws when the publish response has no id", async () => {
@@ -346,5 +356,25 @@ describe("namespaced @handle/topic URLs", () => {
     );
     expect(authOf(0)).toBe(`Bearer ${TOKEN}`);
     expect(authOf(1)).toBe(`Bearer ${TOKEN}`);
+  });
+});
+
+describe("validateChoiceOptions", () => {
+  it("trims and keeps 2 to 5 options in order", () => {
+    expect(validateChoiceOptions([" A ", "B"])).toEqual(["A", "B"]);
+    expect(validateChoiceOptions(["1", "2", "3", "4", "5"])).toHaveLength(5);
+  });
+
+  it("rejects fewer than 2 or more than 5 options", () => {
+    expect(() => validateChoiceOptions(["A"])).toThrow(/2 to 5 choices \(got 1\)/);
+    expect(() => validateChoiceOptions(["1", "2", "3", "4", "5", "6"])).toThrow(/got 6/);
+  });
+
+  it("rejects empty or blank options", () => {
+    expect(() => validateChoiceOptions(["A", "  "])).toThrow(/empty/);
+  });
+
+  it("rejects duplicates, including ones that only differ by whitespace", () => {
+    expect(() => validateChoiceOptions(["A", "B", " A"])).toThrow(/"A" appears more than once/);
   });
 });

@@ -10,7 +10,29 @@ export interface BliprConfig {
 }
 
 /** The kind of reply a published message asks the human to attach. */
-export type ReplyKind = "binary" | "ack";
+export type ReplyKind = "binary" | "ack" | "choice";
+
+/** Option count bounds for a choice ask; the relay enforces the same 2 to 5. */
+export const MIN_CHOICE_OPTIONS = 2;
+export const MAX_CHOICE_OPTIONS = 5;
+
+/** Trim choice options and reject a bad list with a clear error. */
+export function validateChoiceOptions(options: string[]): string[] {
+  const cleaned = options.map((o) => o.trim());
+  if (cleaned.length < MIN_CHOICE_OPTIONS || cleaned.length > MAX_CHOICE_OPTIONS) {
+    throw new Error(
+      `options must have ${String(MIN_CHOICE_OPTIONS)} to ${String(MAX_CHOICE_OPTIONS)} choices (got ${String(cleaned.length)}).`,
+    );
+  }
+  if (cleaned.some((o) => o === "")) {
+    throw new Error("options must not contain empty strings.");
+  }
+  const dupe = cleaned.find((o, i) => cleaned.indexOf(o) !== i);
+  if (dupe !== undefined) {
+    throw new Error(`options must be distinct; "${dupe}" appears more than once.`);
+  }
+  return cleaned;
+}
 
 /** Per-request long-poll deadline slack (ms) on top of the server's `wait`. */
 const POLL_SLACK_MS = 5000;
@@ -54,8 +76,10 @@ export interface PublishOpts {
   click?: string;
   /** Render the body as Markdown; sent as the `X-Markdown` header. */
   markdown?: boolean;
-  /** Ask the recipient for a reply: "binary" (yes/no) or "ack". */
+  /** Ask the recipient for a reply: "binary" (yes/no), "ack" or "choice". */
   reply?: ReplyKind;
+  /** The choices for a "choice" reply. */
+  options?: string[];
 }
 
 /** Parsed result of a publish that requested a reply. */
@@ -106,6 +130,7 @@ function buildPayload(opts: PublishOpts): Record<string, unknown> {
   if (opts.tags?.length) payload.tags = opts.tags;
   if (opts.click) payload.click = opts.click;
   if (opts.reply) payload.reply = opts.reply;
+  if (opts.options) payload.options = opts.options;
   return payload;
 }
 
