@@ -27,7 +27,8 @@ export function validateChoiceOptions(options: string[]): string[] {
   if (cleaned.some((o) => o === "")) {
     throw new Error("options must not contain empty strings.");
   }
-  const dupe = cleaned.find((o, i) => cleaned.indexOf(o) !== i);
+  const folded = cleaned.map((o) => o.toLowerCase());
+  const dupe = cleaned.find((_, i) => folded.indexOf(folded[i] ?? "") !== i);
   if (dupe !== undefined) {
     throw new Error(`options must be distinct; "${dupe}" appears more than once.`);
   }

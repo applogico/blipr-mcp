@@ -374,7 +374,8 @@ describe("validateChoiceOptions", () => {
     expect(() => validateChoiceOptions(["A", "  "])).toThrow(/empty/);
   });
 
-  it("rejects duplicates, including ones that only differ by whitespace", () => {
+  it("rejects duplicates, including ones that only differ by whitespace or case", () => {
     expect(() => validateChoiceOptions(["A", "B", " A"])).toThrow(/"A" appears more than once/);
+    expect(() => validateChoiceOptions(["Yes", "No", "yes"])).toThrow(/"yes" appears more than once/);
   });
 });
