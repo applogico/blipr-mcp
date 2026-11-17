@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/applogico/blipr-mcp/compare/v0.6.3...v0.7.0) (2026-11-17)
+
+
+### Features
+
+* ask multiple-choice questions ([#63](https://github.com/applogico/blipr-mcp/issues/63)) ([9244cbd](https://github.com/applogico/blipr-mcp/commit/9244cbdbb3c24177c8b7ef7dff941b856ae96cc8))
+
+
+### Bug Fixes
+
+* **deps:** bump @hono/node-server from 1.19.17 to 2.1.6 ([#62](https://github.com/applogico/blipr-mcp/issues/62)) ([29f58ea](https://github.com/applogico/blipr-mcp/commit/29f58eaca8b6b0fe548682f780bba795c1b7844b))
+* **deps:** bump @modelcontextprotocol/sdk ([#58](https://github.com/applogico/blipr-mcp/issues/58)) ([976ed50](https://github.com/applogico/blipr-mcp/commit/976ed50e6f1c8b59ad582c02e6c4722517792737))
+
 ## [0.6.3](https://github.com/applogico/blipr-mcp/compare/v0.6.2...v0.6.3) (2026-10-27)
 
 
