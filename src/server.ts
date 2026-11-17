@@ -5,7 +5,11 @@ import {
   publishExpectingReply,
   pollReply,
   checkReply,
+  validateChoiceOptions,
+  MIN_CHOICE_OPTIONS,
+  MAX_CHOICE_OPTIONS,
   type BliprConfig,
+  type ReplyOutcome,
 } from "./publish.js";
 
 /** Default overall time to wait for a human reply before giving up. */
@@ -25,6 +29,29 @@ const markdownSchema = z
   .boolean()
   .optional()
   .describe("Render the body as Markdown (bold, italics, links, code). Off by default.");
+
+/** `options` input that turns `ask` into a multiple-choice question. */
+const optionsSchema = z
+  .array(z.string())
+  .min(MIN_CHOICE_OPTIONS)
+  .max(MAX_CHOICE_OPTIONS)
+  .optional()
+  .describe(
+    `Makes this a multiple-choice question: ${String(MIN_CHOICE_OPTIONS)} to ${String(MAX_CHOICE_OPTIONS)} distinct, non-empty choices. ` +
+      "Omit for a yes/no question."
+  );
+
+/** Shape the `ask` result; a choice ask has no yes/no meaning, so it carries no `approved`. */
+function askResult(outcome: ReplyOutcome, isChoice: boolean, id: string, topic: string) {
+  if (outcome.status !== "answered") {
+    return isChoice
+      ? { responded: false, reason: "timeout", message_id: id, topic }
+      : { responded: false, approved: false, reason: "timeout", message_id: id, topic };
+  }
+  return isChoice
+    ? { responded: true, value: outcome.value, message_id: id, topic }
+    : { responded: true, approved: outcome.value === "yes", value: outcome.value, message_id: id, topic };
+}
 
 /** Build a configured Blipr MCP server with its tools registered. */
 // Zod 4 drops additionalProperties: false from tool schemas; OpenAI strict mode needs it.
@@ -98,18 +125,20 @@ export function createServer(cfg: BliprConfig): McpServer {
   server.registerTool(
     "ask",
     {
-      title: "Ask the human a yes/no question (BLOCKS until they answer)",
+      title: "Ask the human a yes/no or multiple-choice question (BLOCKS until they answer)",
       description:
-        "Send a yes/no question to the user's phone via Blipr and BLOCK until they tap an answer, " +
+        "Send a yes/no question (or, with `options`, a multiple-choice question) to the user's phone via Blipr " +
+        "and BLOCK until they tap an answer, " +
         "then return it. This is a human-in-the-loop approval gate: use it before doing something " +
         "consequential or irreversible (deleting prod data, force-pushing, spending money, sending an " +
         "email) — anything where you'd otherwise ask 'should I proceed?'. The call does not return until " +
         "the human answers or it times out. Returns { responded, approved, value, message_id, topic } — ALWAYS " +
         "branch on `approved`: it is true ONLY when the human tapped Yes, and false on No, a timeout, or an error. " +
-        "Never treat a non-approval as a go-ahead. On timeout (or if your client cancels the call) the human may " +
+        "Never treat a non-approval as a go-ahead. With `options`, the result has no `approved`: `value` is the " +
+        "option the human tapped, exactly as you passed it (trimmed). On timeout (or if your client cancels the call) the human may " +
         "still answer within ~30 min — call check_reply with the returned message_id to resume rather than re-asking.",
       inputSchema: toolInput({
-        message: z.string().describe("The yes/no question to ask the human."),
+        message: z.string().describe("The question to ask the human."),
         title: z.string().optional().describe("Short title, shown bold above the question."),
         topic: topicSchema,
         priority: z
@@ -124,6 +153,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .optional()
           .describe('Tags / emoji shortcodes, e.g. ["question"].'),
         markdown: markdownSchema,
+        options: optionsSchema,
         timeout_seconds: z
           .number()
           .int()
@@ -132,10 +162,12 @@ export function createServer(cfg: BliprConfig): McpServer {
           .describe(`How long to block waiting for the answer before giving up. Defaults to ${DEFAULT_REPLY_TIMEOUT_SECONDS}s. Some MCP clients cancel a long tool call before this elapses; on timeout or cancel, use check_reply with the returned message_id (replies are retained ~30 min).`),
       }),
     },
-    async ({ message, title, topic, priority, tags, markdown, timeout_seconds }) => {
+    async ({ message, title, topic, priority, tags, markdown, options, timeout_seconds }) => {
       try {
+        const choices = options ? validateChoiceOptions(options) : undefined;
+        const reply = choices ? "choice" : "binary";
         const { topic: sent, id } = await publishExpectingReply(
-          { message, title, topic, priority: priority ?? 4, tags, markdown, reply: "binary" },
+          { message, title, topic, priority: priority ?? 4, tags, markdown, reply, options: choices },
           cfg
         );
         const outcome = await pollReply(
@@ -144,16 +176,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           { timeoutSeconds: timeout_seconds ?? DEFAULT_REPLY_TIMEOUT_SECONDS },
           cfg
         );
-        const result =
-          outcome.status === "answered"
-            ? {
-                responded: true,
-                approved: outcome.value === "yes",
-                value: outcome.value,
-                message_id: id,
-                topic: sent,
-              }
-            : { responded: false, approved: false, reason: "timeout", message_id: id, topic: sent };
+        const result = askResult(outcome, choices !== undefined, id, sent);
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (e) {
         return { content: [{ type: "text", text: (e as Error).message }], isError: true };
@@ -228,7 +251,7 @@ export function createServer(cfg: BliprConfig): McpServer {
         "`ask`/`request_ack` returned a timeout, or after your client cancelled the blocking call. Pass the " +
         "`message_id` (and `topic`) you got back from that call. Returns immediately by default; set `wait_seconds` " +
         'to briefly long-poll. Returns { responded, value?, replied_at? } — `value` is "yes"/"no" (a yes/no ' +
-        'question) or "ack". For an approval gate, only proceed when value === "yes". Replies are kept only ~30 ' +
+        'question), the chosen option (a multiple-choice question) or "ack". For an approval gate, only proceed when value === "yes". Replies are kept only ~30 ' +
         "minutes after the original message was sent.",
       inputSchema: toolInput({
         message_id: z.string().describe("The message_id returned by a prior ask / request_ack call."),
