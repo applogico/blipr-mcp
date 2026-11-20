@@ -83,6 +83,7 @@ self-hosted server still creates the topic on the first publish.
 | `BLIPR_URL` (env)          | `https://blipr.dev` | Base URL of your Blipr server (hosted or self-hosted).                      |
 | `.blipr-topic` (file)      | _(none)_            | Per-project default topic, nearest file from the launch directory upward.   |
 | `BLIPR_TOPIC` (env)        | _(none)_            | Global fallback topic; lowest precedence (see "Pick a topic" above).        |
+| `BLIPR_TOKEN` (env)        | _(none)_            | Token sent as `Authorization: Bearer`. An account token sends under your account's plan; a scoped token publishes to a protected topic. Nothing is sent when unset. |
 
 ## Tools
 
@@ -95,16 +96,19 @@ Send a push notification. Parameters:
 - `topic` — topic to publish to; pass it explicitly (falls back to
   `.blipr-topic`, then `BLIPR_TOPIC`).
 - `priority` — `1` silent · `2` low · `3` default · `4` high (plays a sound,
-  respects Focus) · `5` critical (breaks Focus).
+  respects Focus) · `5` Time Sensitive with Blipr Pro (surfaces through Focus);
+  on the free plan `5` is delivered as `4`, never refused.
 - `tags` — emoji shortcodes, e.g. `["warning"]`.
 - `click` — URL opened when the notification is tapped.
 - `markdown`: render the body as Markdown (bold, italics, links, code). Off by default.
 
 ### `send_critical`
 
-A priority-5 page for things that genuinely can't wait. Bypasses silent/Focus
-when the Blipr app has Apple's Critical Alerts entitlement enabled; otherwise
-it's delivered as time-sensitive. Also takes `markdown`.
+A priority 5 message for things that genuinely can't wait. Takes `message`
+(required), `title`, `topic` and `markdown`. With Blipr Pro it is delivered as
+Time Sensitive, so it surfaces through Focus and Do Not Disturb. On the free
+plan it is delivered as priority 4, never refused. The plan is the sender's:
+set `BLIPR_TOKEN` to an account token so it sends as your Pro account.
 
 ### `ask`: human-in-the-loop yes/no or multiple choice (blocks)
 
@@ -121,6 +125,7 @@ guessing.
 - `tags` — emoji shortcodes, e.g. `["question"]`.
 - `markdown`: render the body as Markdown (bold, italics, links, code). Off by default.
 - `options`: 2 to 5 distinct choices. Makes it a multiple-choice question; omit for yes/no.
+  Free on every plan; an answer counts toward your daily replies like any other.
 - `timeout_seconds` — how long to wait for your answer (default `120`).
 
 Returns `{ responded, approved, value, message_id, topic }`. **Branch on
@@ -128,8 +133,8 @@ Returns `{ responded, approved, value, message_id, topic }`. **Branch on
 timeout, or an error, so a refusal or non-answer can never be misread as a
 go-ahead. On a timeout you get
 `{ responded: false, approved: false, reason: "timeout", message_id, topic }`. If
-it times out (or your MCP client cancels the call), you can still answer for
-~30 min — pass the returned `message_id` to `check_reply` to resume.
+it times out (or your MCP client cancels the call), you can still answer
+later: pass the returned `message_id` to `check_reply` to pick it up.
 
 With `options`, it returns `{ responded, value, message_id, topic }` with no
 `approved`. `value` is the option you tapped, exactly as sent.
@@ -155,9 +160,8 @@ resume later with `check_reply` and the returned `message_id`.
 Look up whether you've replied to an earlier `ask`/`request_ack` — handy if the
 blocking call timed out or your MCP client cancelled it. Pass the `message_id`
 (and `topic`) it returned; non-blocking by default, or set `wait_seconds` to
-briefly long-poll. Returns `{ responded, value?, replied_at? }` (`value` is
-`"yes"` / `"no"` / `"ack"`, or the chosen option). Replies are kept ~30 minutes after the original
-message was sent.
+briefly long-poll (up to `300` seconds). Returns `{ responded, value?, replied_at? }` (`value` is
+`"yes"` / `"no"` / `"ack"`, or the chosen option).
 
 ## Example prompts
 
