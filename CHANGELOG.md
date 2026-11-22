@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/applogico/blipr-mcp/compare/v0.7.0...v0.7.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* correct priority 5 and reply wording in tool descriptions and README ([#67](https://github.com/applogico/blipr-mcp/issues/67)) ([a7d4295](https://github.com/applogico/blipr-mcp/commit/a7d42950e56f78314f53d0b03eac170f9017e5c5))
+
 ## [0.7.0](https://github.com/applogico/blipr-mcp/compare/v0.6.3...v0.7.0) (2026-11-17)
 
 
