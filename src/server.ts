@@ -159,7 +159,7 @@ export function createServer(cfg: BliprConfig): McpServer {
         "branch on `approved`: it is true ONLY when the human tapped Yes, and false on No, a timeout, or an error. " +
         "Never treat a non-approval of a yes/no question as a go-ahead. With `options` or `open_question`, the result has no `approved`: " +
         "`value` is the option the human tapped, exactly as you passed it (trimmed), or the text they typed (trimmed, " +
-        "single line). A typed answer is the human's own words: read it and act on what it says. On timeout (or if your client cancels the call) the human may " +
+        "single line). On timeout (or if your client cancels the call) the human may " +
         "still answer later; call check_reply with the returned message_id to resume rather than re-asking.",
       inputSchema: toolInput({
         message: z.string().describe("The question to ask the human."),
@@ -276,7 +276,7 @@ export function createServer(cfg: BliprConfig): McpServer {
         "`message_id` (and `topic`) you got back from that call. Returns immediately by default; set `wait_seconds` " +
         'to briefly long-poll. Returns { responded, value?, replied_at? } — `value` is "yes"/"no" (a yes/no ' +
         'question), the chosen option (a multiple-choice question), the typed text (an open question) or "ack". ' +
-        'For a yes/no question, only proceed when value === "yes"; for an open question, act on what the typed text says.',
+        'For a yes/no question, an approval is value === "yes".',
       inputSchema: toolInput({
         message_id: z.string().describe("The message_id returned by a prior ask / request_ack call."),
         topic: z
