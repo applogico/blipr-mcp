@@ -39,7 +39,7 @@ const optionsSchema = z
   .optional()
   .describe(
     `Makes this a multiple-choice question: ${String(MIN_CHOICE_OPTIONS)} to ${String(MAX_CHOICE_OPTIONS)} distinct, non-empty choices. ` +
-      "Omit for a yes/no question. Cannot be combined with `open_question`."
+      "Omit for a yes/no question."
   );
 
 /** `open_question` input that turns `ask` into a question answered by typing. */
@@ -48,7 +48,7 @@ const openQuestionSchema = z
   .optional()
   .describe(
     `Makes this an open question: the human types a short answer of up to ${String(TEXT_REPLY_MAX_CHARS)} characters, ` +
-      "returned as `value`. Cannot be combined with `options`."
+      "returned as `value`."
   );
 
 /** Pick the `ask` reply kind from its inputs, validating choices before anything is sent. */

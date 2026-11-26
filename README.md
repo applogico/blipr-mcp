@@ -118,7 +118,7 @@ until you answer**, then return the answer.
 - `markdown`: render the body as Markdown (bold, italics, links, code). Off by default.
 - `options`: 2 to 5 distinct choices. Makes it a multiple-choice question; omit for yes/no.
 - `open_question`: set to `true` to type the answer yourself, up to 120
-  characters. Cannot be combined with `options`.
+  characters.
 - `timeout_seconds`: how long to wait for your answer (default `120`).
 
 Every kind of question is free on every plan; an answer counts toward your
