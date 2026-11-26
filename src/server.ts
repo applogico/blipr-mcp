@@ -8,9 +8,12 @@ import {
   validateChoiceOptions,
   MIN_CHOICE_OPTIONS,
   MAX_CHOICE_OPTIONS,
+  TEXT_REPLY_MAX_CHARS,
   type BliprConfig,
+  type ReplyKind,
   type ReplyOutcome,
 } from "./publish.js";
+import { waitForMessage } from "./subscribe.js";
 
 /** Default overall time to wait for a human reply before giving up. */
 const DEFAULT_REPLY_TIMEOUT_SECONDS = 120;
@@ -20,8 +23,7 @@ const topicSchema = z
   .string()
   .optional()
   .describe(
-    "Topic to publish to. Pass it explicitly — each project should use its own topic. " +
-      "When omitted, falls back to the project's `.blipr-topic` file, then the BLIPR_TOPIC env var."
+    "Topic to publish to. When omitted, falls back to the project's `.blipr-topic` file, then the BLIPR_TOPIC env var."
   );
 
 /** `markdown` input shared by every publishing tool. */
@@ -41,16 +43,85 @@ const optionsSchema = z
       "Omit for a yes/no question."
   );
 
-/** Shape the `ask` result; a choice ask has no yes/no meaning, so it carries no `approved`. */
-function askResult(outcome: ReplyOutcome, isChoice: boolean, id: string, topic: string) {
-  if (outcome.status !== "answered") {
-    return isChoice
-      ? { responded: false, reason: "timeout", message_id: id, topic }
-      : { responded: false, approved: false, reason: "timeout", message_id: id, topic };
+/** `open_question` input that turns `ask` into a question answered by typing. */
+const openQuestionSchema = z
+  .boolean()
+  .optional()
+  .describe(
+    `Makes this an open question: the human types a short answer of up to ${String(TEXT_REPLY_MAX_CHARS)} characters, ` +
+      "returned as `value`."
+  );
+
+/** Pick the `ask` reply kind from its inputs, validating choices before anything is sent. */
+function askKind(options?: string[], openQuestion?: boolean): { reply: ReplyKind; choices?: string[] } {
+  if (options && openQuestion) {
+    throw new Error("Pass either `options` or `open_question`, not both.");
   }
-  return isChoice
+  if (options) return { reply: "choice", choices: validateChoiceOptions(options) };
+  return { reply: openQuestion ? "text" : "binary" };
+}
+
+/** Shape the `ask` result: the answer as given, or a timeout. */
+function askResult(outcome: ReplyOutcome, id: string, topic: string) {
+  return outcome.status === "answered"
     ? { responded: true, value: outcome.value, message_id: id, topic }
-    : { responded: true, approved: outcome.value === "yes", value: outcome.value, message_id: id, topic };
+    : { responded: false, reason: "timeout", message_id: id, topic };
+}
+
+/** Register the tool that listens on a topic's event stream. */
+function registerWaitForMessage(server: McpServer, cfg: BliprConfig): void {
+  server.registerTool(
+    "wait_for_message",
+    {
+      title: "Wait for the next message on a topic (BLOCKS until one arrives)",
+      description:
+        "Listen on a topic's live stream and BLOCK until a message is published to it, then return that message. " +
+        "With `since`, messages published after that point are returned first, oldest first, one per call. " +
+        "Waits with no time limit unless `timeout_seconds` is set. Returns { received: true, message }, or " +
+        '{ received: false, reason: "timeout" }. Passing `since: "c<message.cursor>"` on the next call continues ' +
+        "after that message.",
+      inputSchema: toolInput({
+        topic: z
+          .string()
+          .optional()
+          .describe(
+            "Topic to listen on. When omitted, falls back to the project's `.blipr-topic` file, then the BLIPR_TOPIC env var."
+          ),
+        since: z
+          .string()
+          .optional()
+          .describe(
+            'Where to start: "all", "c<cursor>" (after a received message), a Unix time in seconds, or a duration like "10m". ' +
+              "Omit for new messages only."
+          ),
+        timeout_seconds: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Stop waiting after this many seconds. Omit to wait with no time limit."),
+      }),
+    },
+    async ({ topic, since, timeout_seconds }, extra) => {
+      try {
+        const t = (topic ?? cfg.defaultTopic ?? "").trim();
+        if (!t) {
+          throw new Error(
+            "No topic given and no default is configured. Pass `topic` in the tool call, " +
+              "or set a per-project default in a `.blipr-topic` file (or the BLIPR_TOPIC env var)."
+          );
+        }
+        const outcome = await waitForMessage(t, { since, timeoutSeconds: timeout_seconds, signal: extra.signal }, cfg);
+        const result =
+          outcome.status === "message"
+            ? { received: true, message: outcome.message }
+            : { received: false, reason: "timeout" };
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      } catch (e) {
+        return { content: [{ type: "text", text: (e as Error).message }], isError: true };
+      }
+    }
+  );
 }
 
 /** Build a configured Blipr MCP server with its tools registered. */
@@ -59,16 +130,16 @@ const toolInput = <T extends z.ZodRawShape>(shape: T) =>
   z.object(shape).meta({ additionalProperties: false });
 
 export function createServer(cfg: BliprConfig): McpServer {
-  const server = new McpServer({ name: "blipr", version: "0.1.0" });
+  const server = new McpServer({ name: "blipr", version: "0.7.1" }); // x-release-please-version
 
   server.registerTool(
-    "send_alert",
+    "send_message",
     {
-      title: "Send a Blipr alert",
+      title: "Send a Blipr message",
       description:
-        "Send a push notification to the user's phone via Blipr. Use this to reach the human: a long task finished, a build broke, you need approval, or you're blocked and need input. Priority 1 (silent) to 5 (Time Sensitive with Blipr Pro, delivered as 4 on the free plan); defaults to 3.",
+        "Send a push notification to the user's phone via Blipr.",
       inputSchema: toolInput({
-        message: z.string().describe("The alert body — what happened or what you need."),
+        message: z.string().describe("The message body."),
         title: z.string().optional().describe("Short title, shown bold above the message."),
         topic: topicSchema,
         priority: z
@@ -77,7 +148,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .min(1)
           .max(5)
           .optional()
-          .describe("1=min/silent, 2=low, 3=default, 4=high (plays a sound, respects Focus), 5=Time Sensitive (surfaces through Focus with Blipr Pro; delivered as 4 on the free plan, never refused)."),
+          .describe("1=min/silent, 2=low, 3=default, 4=high (plays a sound, respects Focus), 5=Time Sensitive (surfaces through Focus with Blipr Pro; delivered as 4 on the free plan, never refused). Defaults to 3."),
         tags: z
           .array(z.string())
           .optional()
@@ -99,23 +170,28 @@ export function createServer(cfg: BliprConfig): McpServer {
   server.registerTool(
     "send_critical",
     {
-      title: "Page the user (priority 5)",
+      title: "Send a priority 5 message",
       description:
-        "Send a priority 5 message. Use ONLY for things that genuinely cannot wait. With Blipr Pro it is delivered as Time Sensitive, so it surfaces through Focus and Do Not Disturb; on the free plan it is delivered as priority 4, never refused.",
+        "Send a priority 5 message. With Blipr Pro it is delivered as Time Sensitive, so it surfaces through Focus and Do Not Disturb; on the free plan it is delivered as priority 4, never refused.",
       inputSchema: toolInput({
-        message: z.string().describe("What is wrong or what you need, urgently."),
-        title: z.string().optional().describe("Short title."),
+        message: z.string().describe("The message body."),
+        title: z.string().optional().describe("Short title, shown bold above the message."),
         topic: topicSchema,
+        tags: z
+          .array(z.string())
+          .optional()
+          .describe('Tags / emoji shortcodes, e.g. ["warning", "rocket"].'),
+        click: z.url().optional().describe("URL opened when the notification is tapped."),
         markdown: markdownSchema,
       }),
     },
-    async ({ message, title, topic, markdown }) => {
+    async ({ message, title, topic, tags, click, markdown }) => {
       try {
         const sent = await publish(
-          { message, title, topic, priority: 5, tags: ["rotating_light"], markdown },
+          { message, title, topic, priority: 5, tags, click, markdown },
           cfg
         );
-        return { content: [{ type: "text", text: `Paged "${sent}" (priority 5).` }] };
+        return { content: [{ type: "text", text: `Sent to "${sent}" (priority 5).` }] };
       } catch (e) {
         return { content: [{ type: "text", text: (e as Error).message }], isError: true };
       }
@@ -125,18 +201,16 @@ export function createServer(cfg: BliprConfig): McpServer {
   server.registerTool(
     "ask",
     {
-      title: "Ask the human a yes/no or multiple-choice question (BLOCKS until they answer)",
+      title: "Ask the human a yes/no, multiple-choice or open question (BLOCKS until they answer)",
       description:
-        "Send a yes/no question (or, with `options`, a multiple-choice question) to the user's phone via Blipr " +
-        "and BLOCK until they tap an answer, " +
-        "then return it. This is a human-in-the-loop approval gate: use it before doing something " +
-        "consequential or irreversible (deleting prod data, force-pushing, spending money, sending an " +
-        "email) — anything where you'd otherwise ask 'should I proceed?'. The call does not return until " +
-        "the human answers or it times out. Returns { responded, approved, value, message_id, topic } — ALWAYS " +
-        "branch on `approved`: it is true ONLY when the human tapped Yes, and false on No, a timeout, or an error. " +
-        "Never treat a non-approval as a go-ahead. With `options`, the result has no `approved`: `value` is the " +
-        "option the human tapped, exactly as you passed it (trimmed). On timeout (or if your client cancels the call) the human may " +
-        "still answer later; call check_reply with the returned message_id to resume rather than re-asking.",
+        "Send a question to the user's phone via Blipr and BLOCK until they answer, then return it. " +
+        "Three kinds: yes/no (the default), multiple choice (pass `options`), or open (pass `open_question: true`), " +
+        `where the human types an answer of up to ${String(TEXT_REPLY_MAX_CHARS)} characters. ` +
+        "Returns " +
+        '{ responded, value, message_id, topic }: `value` is "yes" or "no", the option the human tapped ' +
+        "exactly as you passed it (trimmed), or the text they typed (trimmed, single line). With no answer in time " +
+        'it returns { responded: false, reason: "timeout", message_id, topic }. After a timeout (or if your client ' +
+        "cancels the call) the human may still answer; check_reply with the returned message_id picks it up.",
       inputSchema: toolInput({
         message: z.string().describe("The question to ask the human."),
         title: z.string().optional().describe("Short title, shown bold above the question."),
@@ -147,25 +221,25 @@ export function createServer(cfg: BliprConfig): McpServer {
           .min(1)
           .max(5)
           .optional()
-          .describe("1=min/silent … 5=Time Sensitive (Blipr Pro; 4 on the free plan). Defaults to 4 (high) since it needs an answer."),
+          .describe("1=min/silent … 5=Time Sensitive (Blipr Pro; 4 on the free plan). Defaults to 4 (high)."),
         tags: z
           .array(z.string())
           .optional()
           .describe('Tags / emoji shortcodes, e.g. ["question"].'),
         markdown: markdownSchema,
         options: optionsSchema,
+        open_question: openQuestionSchema,
         timeout_seconds: z
           .number()
           .int()
           .positive()
           .optional()
-          .describe(`How long to block waiting for the answer before giving up. Defaults to ${DEFAULT_REPLY_TIMEOUT_SECONDS}s. Some MCP clients cancel a long tool call before this elapses; on timeout or cancel, use check_reply with the returned message_id.`),
+          .describe(`How long to block waiting for the answer before giving up. Defaults to ${DEFAULT_REPLY_TIMEOUT_SECONDS}s. Some MCP clients cancel a long tool call before this elapses.`),
       }),
     },
-    async ({ message, title, topic, priority, tags, markdown, options, timeout_seconds }) => {
+    async ({ message, title, topic, priority, tags, markdown, options, open_question, timeout_seconds }) => {
       try {
-        const choices = options ? validateChoiceOptions(options) : undefined;
-        const reply = choices ? "choice" : "binary";
+        const { reply, choices } = askKind(options, open_question);
         const { topic: sent, id } = await publishExpectingReply(
           { message, title, topic, priority: priority ?? 4, tags, markdown, reply, options: choices },
           cfg
@@ -176,7 +250,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           { timeoutSeconds: timeout_seconds ?? DEFAULT_REPLY_TIMEOUT_SECONDS },
           cfg
         );
-        const result = askResult(outcome, choices !== undefined, id, sent);
+        const result = askResult(outcome, id, sent);
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (e) {
         return { content: [{ type: "text", text: (e as Error).message }], isError: true };
@@ -189,14 +263,12 @@ export function createServer(cfg: BliprConfig): McpServer {
     {
       title: "Request the human's acknowledgement (BLOCKS until they ack)",
       description:
-        "Send a message that needs the human to acknowledge it, and BLOCK until they tap 'Acknowledge', " +
-        "then return. Use this when the human must see and confirm receipt of something before you continue " +
-        "(a heads-up they have to read, a checkpoint reached, 'I'm about to start the long run'). The call " +
-        "does not return until the human acks or it times out. Returns { responded, message_id, topic } plus " +
-        '`replied_at` when acked (responded:true), or { responded: false, reason: "timeout" } if no one acks in ' +
-        "time. On timeout/cancel, call check_reply with the returned message_id.",
+        "Send a message with an Acknowledge button and BLOCK until the human taps it, then return. " +
+        "Returns { responded, message_id, topic } plus " +
+        '`replied_at` when acked, or { responded: false, reason: "timeout", message_id, topic } if no one acks in ' +
+        "time. After a timeout or cancel, check_reply with the returned message_id picks up a later ack.",
       inputSchema: toolInput({
-        message: z.string().describe("What the human needs to see and acknowledge."),
+        message: z.string().describe("The message body."),
         title: z.string().optional().describe("Short title, shown bold above the message."),
         topic: topicSchema,
         priority: z
@@ -205,7 +277,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .min(1)
           .max(5)
           .optional()
-          .describe("1=min/silent … 5=Time Sensitive (Blipr Pro; 4 on the free plan). Defaults to 4 (high) since it needs an ack."),
+          .describe("1=min/silent … 5=Time Sensitive (Blipr Pro; 4 on the free plan). Defaults to 4 (high)."),
         tags: z
           .array(z.string())
           .optional()
@@ -216,7 +288,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .int()
           .positive()
           .optional()
-          .describe(`How long to block waiting for the acknowledgement before giving up. Defaults to ${DEFAULT_REPLY_TIMEOUT_SECONDS}s. Some MCP clients cancel a long tool call early; on timeout or cancel, use check_reply with the returned message_id.`),
+          .describe(`How long to block waiting for the acknowledgement before giving up. Defaults to ${DEFAULT_REPLY_TIMEOUT_SECONDS}s. Some MCP clients cancel a long tool call early.`),
       }),
     },
     async ({ message, title, topic, priority, tags, markdown, timeout_seconds }) => {
@@ -247,27 +319,26 @@ export function createServer(cfg: BliprConfig): McpServer {
     {
       title: "Check for a reply to an earlier ask / request_ack (non-blocking by default)",
       description:
-        "Look up whether the human has replied to a question or ack you sent earlier — use it to resume after " +
-        "`ask`/`request_ack` returned a timeout, or after your client cancelled the blocking call. Pass the " +
-        "`message_id` (and `topic`) you got back from that call. Returns immediately by default; set `wait_seconds` " +
-        'to briefly long-poll. Returns { responded, value?, replied_at? } — `value` is "yes"/"no" (a yes/no ' +
-        'question), the chosen option (a multiple-choice question) or "ack". For an approval gate, only proceed when value === "yes".',
+        "Look up whether the human has replied to an earlier `ask` or `request_ack`, including one that timed out " +
+        "or that your client cancelled. Takes the " +
+        "`message_id` (and `topic`) that call returned. Returns immediately by default; set `wait_seconds` " +
+        'to wait for an answer. Returns { responded, value?, replied_at? } — `value` is "yes"/"no" (a yes/no ' +
+        'question), the chosen option (a multiple-choice question), the typed text (an open question) or "ack".',
       inputSchema: toolInput({
         message_id: z.string().describe("The message_id returned by a prior ask / request_ack call."),
         topic: z
           .string()
           .optional()
           .describe(
-            "Topic the original message was sent to. Pass it explicitly when you passed one on the " +
-              "original call; otherwise it falls back to the same default (`.blipr-topic` file, then " +
-              "the BLIPR_TOPIC env var)."
+            "Topic the original message was sent to. When omitted, falls back to the same default " +
+              "(`.blipr-topic` file, then the BLIPR_TOPIC env var)."
           ),
         wait_seconds: z
           .number()
           .int()
           .min(0)
           .optional()
-          .describe("Seconds to long-poll for an answer (0 = instant check; default 0)."),
+          .describe("Seconds to wait for an answer (0 = instant check; default 0)."),
       }),
     },
     async ({ message_id, topic, wait_seconds }) => {
@@ -279,17 +350,24 @@ export function createServer(cfg: BliprConfig): McpServer {
               "or set a per-project default in a `.blipr-topic` file (or the BLIPR_TOPIC env var)."
           );
         }
-        const outcome = await checkReply(t, message_id, wait_seconds ?? 0, cfg);
+        const wait = wait_seconds ?? 0;
+        // A wait longer than one server long-poll is spread over several requests.
+        const outcome =
+          wait > 0
+            ? await pollReply(t, message_id, { timeoutSeconds: wait }, cfg)
+            : await checkReply(t, message_id, 0, cfg);
         const result =
           outcome.status === "answered"
             ? { responded: true, value: outcome.value, replied_at: outcome.repliedAt }
-            : { responded: false, reason: "timeout" };
+            : { responded: false };
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (e) {
         return { content: [{ type: "text", text: (e as Error).message }], isError: true };
       }
     }
   );
+
+  registerWaitForMessage(server, cfg);
 
   return server;
 }
