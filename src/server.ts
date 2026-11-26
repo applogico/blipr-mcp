@@ -73,14 +73,14 @@ const toolInput = <T extends z.ZodRawShape>(shape: T) =>
   z.object(shape).meta({ additionalProperties: false });
 
 export function createServer(cfg: BliprConfig): McpServer {
-  const server = new McpServer({ name: "blipr", version: "0.1.0" });
+  const server = new McpServer({ name: "blipr", version: "0.7.1" }); // x-release-please-version
 
   server.registerTool(
     "send_alert",
     {
       title: "Send a Blipr message",
       description:
-        "Send a push notification to the user's phone via Blipr. Priority 1 (silent) to 5 (Time Sensitive with Blipr Pro, delivered as 4 on the free plan); defaults to 3.",
+        "Send a push notification to the user's phone via Blipr.",
       inputSchema: toolInput({
         message: z.string().describe("The message body."),
         title: z.string().optional().describe("Short title, shown bold above the message."),
@@ -91,7 +91,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .min(1)
           .max(5)
           .optional()
-          .describe("1=min/silent, 2=low, 3=default, 4=high (plays a sound, respects Focus), 5=Time Sensitive (surfaces through Focus with Blipr Pro; delivered as 4 on the free plan, never refused)."),
+          .describe("1=min/silent, 2=low, 3=default, 4=high (plays a sound, respects Focus), 5=Time Sensitive (surfaces through Focus with Blipr Pro; delivered as 4 on the free plan, never refused). Defaults to 3."),
         tags: z
           .array(z.string())
           .optional()
@@ -144,7 +144,7 @@ export function createServer(cfg: BliprConfig): McpServer {
         "Send a question to the user's phone via Blipr and BLOCK until they answer, then return it. " +
         "Three kinds: yes/no (the default), multiple choice (pass `options`), or open (pass `open_question: true`), " +
         `where the human types an answer of up to ${String(TEXT_REPLY_MAX_CHARS)} characters. ` +
-        "The call does not return until the human answers or it times out. Returns " +
+        "Returns " +
         '{ responded, value, message_id, topic }: `value` is "yes" or "no", the option the human tapped ' +
         "exactly as you passed it (trimmed), or the text they typed (trimmed, single line). With no answer in time " +
         'it returns { responded: false, reason: "timeout", message_id, topic }. After a timeout (or if your client ' +
@@ -172,7 +172,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .int()
           .positive()
           .optional()
-          .describe(`How long to block waiting for the answer before giving up. Defaults to ${DEFAULT_REPLY_TIMEOUT_SECONDS}s. Some MCP clients cancel a long tool call before this elapses; after a timeout or cancel, check_reply with the returned message_id picks up a later answer.`),
+          .describe(`How long to block waiting for the answer before giving up. Defaults to ${DEFAULT_REPLY_TIMEOUT_SECONDS}s. Some MCP clients cancel a long tool call before this elapses.`),
       }),
     },
     async ({ message, title, topic, priority, tags, markdown, options, open_question, timeout_seconds }) => {
@@ -201,10 +201,9 @@ export function createServer(cfg: BliprConfig): McpServer {
     {
       title: "Request the human's acknowledgement (BLOCKS until they ack)",
       description:
-        "Send a message that needs the human to acknowledge it, and BLOCK until they tap 'Acknowledge', " +
-        "then return. The call " +
-        "does not return until the human acks or it times out. Returns { responded, message_id, topic } plus " +
-        '`replied_at` when acked (responded:true), or { responded: false, reason: "timeout" } if no one acks in ' +
+        "Send a message with an Acknowledge button and BLOCK until the human taps it, then return. " +
+        "Returns { responded, message_id, topic } plus " +
+        '`replied_at` when acked, or { responded: false, reason: "timeout", message_id, topic } if no one acks in ' +
         "time. After a timeout or cancel, check_reply with the returned message_id picks up a later ack.",
       inputSchema: toolInput({
         message: z.string().describe("The message body."),
@@ -227,7 +226,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .int()
           .positive()
           .optional()
-          .describe(`How long to block waiting for the acknowledgement before giving up. Defaults to ${DEFAULT_REPLY_TIMEOUT_SECONDS}s. Some MCP clients cancel a long tool call early; after a timeout or cancel, check_reply with the returned message_id picks up a later ack.`),
+          .describe(`How long to block waiting for the acknowledgement before giving up. Defaults to ${DEFAULT_REPLY_TIMEOUT_SECONDS}s. Some MCP clients cancel a long tool call early.`),
       }),
     },
     async ({ message, title, topic, priority, tags, markdown, timeout_seconds }) => {
@@ -277,7 +276,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .int()
           .min(0)
           .optional()
-          .describe("Seconds to long-poll for an answer (0 = instant check; default 0)."),
+          .describe("Seconds to long-poll for an answer, up to 300 (0 = instant check; default 0)."),
       }),
     },
     async ({ message_id, topic, wait_seconds }) => {
@@ -293,7 +292,7 @@ export function createServer(cfg: BliprConfig): McpServer {
         const result =
           outcome.status === "answered"
             ? { responded: true, value: outcome.value, replied_at: outcome.repliedAt }
-            : { responded: false, reason: "timeout" };
+            : { responded: false };
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (e) {
         return { content: [{ type: "text", text: (e as Error).message }], isError: true };

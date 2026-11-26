@@ -345,6 +345,6 @@ describe("MCP server", () => {
     mockFetch(200, "OK", JSON.stringify({ status: "pending" }));
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
     const res = await callTool(client, "check_reply", { message_id: "abc123def456" });
-    expect(jsonOf(res)).toEqual({ responded: false, reason: "timeout" });
+    expect(jsonOf(res)).toEqual({ responded: false });
   });
 });
