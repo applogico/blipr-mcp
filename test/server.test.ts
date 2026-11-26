@@ -80,7 +80,7 @@ describe("MCP server", () => {
     mockFetch();
     const client = await connect({ bliprUrl: "https://blipr.dev" });
     const res = await callTool(client, "send_critical", { message: "down", topic: "page" });
-    expect(textOf(res)).toMatch(/Paged "page"/);
+    expect(textOf(res)).toMatch(/Sent to "page"/);
     expect(calls()[0][0]).toBe("https://blipr.dev/blip/page");
     expect(bodyOf()).toMatchObject({ priority: 5 });
   });
@@ -112,7 +112,6 @@ describe("MCP server", () => {
     expect(res.isError ?? false).toBe(false);
     expect(jsonOf(res)).toEqual({
       responded: true,
-      approved: true,
       value: "yes",
       message_id: "abc123def456",
       topic: "demo",
@@ -141,21 +140,19 @@ describe("MCP server", () => {
     expect(res.isError ?? false).toBe(false);
     expect(jsonOf(res)).toEqual({
       responded: false,
-      approved: false,
       reason: "timeout",
       message_id: "abc123def456",
       topic: "demo",
     });
   });
 
-  it("ask returns approved:false on a No — a refusal can never read as a go-ahead", async () => {
+  it("ask returns the No as given", async () => {
     mockReplyFlow({ status: "answered", value: "no", replied_at: 1700000005 });
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
     const res = await callTool(client, "ask", { message: "delete prod?", timeout_seconds: 5 });
     expect(res.isError ?? false).toBe(false);
     expect(jsonOf(res)).toEqual({
       responded: true,
-      approved: false,
       value: "no",
       message_id: "abc123def456",
       topic: "demo",
@@ -181,7 +178,7 @@ describe("MCP server", () => {
     expect(res.isError).toBe(true);
   });
 
-  it("ask with options publishes reply:choice and returns the chosen option, no approved", async () => {
+  it("ask with options publishes reply:choice and returns the chosen option", async () => {
     mockReplyFlow({ status: "answered", value: "Hold", replied_at: 1700000010 });
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
     const res = await callTool(client, "ask", {
@@ -203,7 +200,7 @@ describe("MCP server", () => {
     });
   });
 
-  it("ask with options returns the timed-out shape without approved", async () => {
+  it("ask with options returns the timed-out shape", async () => {
     mockReplyFlow({ status: "timeout" });
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
     const res = await callTool(client, "ask", {
@@ -241,7 +238,7 @@ describe("MCP server", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it("ask with open_question publishes reply:text and returns the typed answer, no approved", async () => {
+  it("ask with open_question publishes reply:text and returns the typed answer", async () => {
     mockReplyFlow({ status: "answered", value: "Use the staging bucket", replied_at: 1700000020 });
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
     const res = await callTool(client, "ask", {
@@ -260,14 +257,7 @@ describe("MCP server", () => {
     expect(bodyOf(0)).not.toHaveProperty("options");
   });
 
-  it("ask with open_question never reads a typed yes as approval", async () => {
-    mockReplyFlow({ status: "answered", value: "yes" });
-    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
-    const res = await callTool(client, "ask", { message: "notes?", open_question: true, timeout_seconds: 5 });
-    expect(jsonOf(res)).not.toHaveProperty("approved");
-  });
-
-  it("ask with open_question returns the timed-out shape without approved", async () => {
+  it("ask with open_question returns the timed-out shape", async () => {
     mockReplyFlow({ status: "timeout" });
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
     const res = await callTool(client, "ask", { message: "name?", open_question: true, timeout_seconds: 1 });
@@ -284,7 +274,7 @@ describe("MCP server", () => {
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
     const res = await callTool(client, "ask", { message: "go?", open_question: false, timeout_seconds: 5 });
     expect(bodyOf(0)).toMatchObject({ reply: "binary" });
-    expect(jsonOf(res)).toMatchObject({ approved: false, value: "no" });
+    expect(jsonOf(res)).toMatchObject({ value: "no" });
   });
 
   it("ask rejects open_question combined with options without publishing", async () => {
