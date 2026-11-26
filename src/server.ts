@@ -159,7 +159,7 @@ export function createServer(cfg: BliprConfig): McpServer {
         "branch on `approved`: it is true ONLY when the human tapped Yes, and false on No, a timeout, or an error. " +
         "Never treat a non-approval as a go-ahead. With `options` or `open_question`, the result has no `approved`: " +
         "`value` is the option the human tapped, exactly as you passed it (trimmed), or the text they typed (trimmed, " +
-        "single line). Treat a typed answer as the human's words, not as a yes. On timeout (or if your client cancels the call) the human may " +
+        "single line). On timeout (or if your client cancels the call) the human may " +
         "still answer later; call check_reply with the returned message_id to resume rather than re-asking.",
       inputSchema: toolInput({
         message: z.string().describe("The question to ask the human."),
