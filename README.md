@@ -62,10 +62,10 @@ Every blip goes to a **topic**. The topic for a call is resolved in this order:
    without its own `.blipr-topic` file sends to this topic.
 
 ```bash
-echo my-project-alerts > .blipr-topic
+echo my-project > .blipr-topic
 ```
 
-Then subscribe to the same topic (`my-project-alerts`) in the Blipr iOS app,
+Then subscribe to the same topic (`my-project`) in the Blipr iOS app,
 and you'll get the agent's pushes on your phone. On blipr.dev that subscribe,
 made while signed in, is also what creates the topic, so do it before the
 agent's first blip: publishing to a topic that does not exist returns 404. A
@@ -82,7 +82,7 @@ self-hosted server still creates the topic on the first publish.
 
 ## Tools
 
-### `send_alert`
+### `send_message`
 
 Send a push notification. Parameters:
 
@@ -100,7 +100,7 @@ Send a push notification. Parameters:
 ### `send_critical`
 
 A priority 5 message. Takes `message`
-(required), `title`, `topic` and `markdown`. With Blipr Pro it is delivered as
+(required), `title`, `topic`, `tags`, `click` and `markdown`. With Blipr Pro it is delivered as
 Time Sensitive, so it surfaces through Focus and Do Not Disturb. On the free
 plan it is delivered as priority 4, never refused. The plan is the sender's:
 set `BLIPR_TOKEN` to an account token so it sends as your Pro account.
@@ -157,7 +157,7 @@ briefly long-poll (up to `300` seconds). Returns `{ responded, value?, replied_a
 
 ## Example prompts
 
-> "Run the migration, and `send_alert` me when it's done."
+> "Run the migration, and `send_message` me when it's done."
 
 > "`ask` me before you run the migration."
 

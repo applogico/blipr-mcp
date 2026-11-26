@@ -47,32 +47,32 @@ describe("MCP server", () => {
       "ask",
       "check_reply",
       "request_ack",
-      "send_alert",
       "send_critical",
+      "send_message",
     ]);
   });
 
-  it("send_alert publishes the right JSON body and reports success", async () => {
+  it("send_message publishes the right JSON body and reports success", async () => {
     mockFetch();
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
-    const res = await callTool(client, "send_alert", { message: "hi", topic: "ops", priority: 4 });
+    const res = await callTool(client, "send_message", { message: "hi", topic: "ops", priority: 4 });
     expect(res.isError ?? false).toBe(false);
     expect(textOf(res)).toMatch(/Sent to "ops"/);
     expect(calls()[0][0]).toBe("https://blipr.dev/blip/ops");
     expect(bodyOf()).toMatchObject({ message: "hi", priority: 4 });
   });
 
-  it("send_alert forwards markdown as the X-Markdown header", async () => {
+  it("send_message forwards markdown as the X-Markdown header", async () => {
     mockFetch();
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
-    await callTool(client, "send_alert", { message: "**hi**", markdown: true });
+    await callTool(client, "send_message", { message: "**hi**", markdown: true });
     expect(calls()[0][1].headers["X-Markdown"]).toBe("true");
   });
 
-  it("send_alert sends no X-Markdown header when markdown is omitted", async () => {
+  it("send_message sends no X-Markdown header when markdown is omitted", async () => {
     mockFetch();
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
-    await callTool(client, "send_alert", { message: "hi" });
+    await callTool(client, "send_message", { message: "hi" });
     expect(calls()[0][1].headers).not.toHaveProperty("X-Markdown");
   });
 
@@ -83,12 +83,13 @@ describe("MCP server", () => {
     expect(textOf(res)).toMatch(/Sent to "page"/);
     expect(calls()[0][0]).toBe("https://blipr.dev/blip/page");
     expect(bodyOf()).toMatchObject({ priority: 5 });
+    expect(bodyOf()).not.toHaveProperty("tags");
   });
 
   it("returns isError when Blipr responds with a failure", async () => {
     mockFetch(502, "Bad Gateway", "nope");
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
-    const res = await callTool(client, "send_alert", { message: "hi" });
+    const res = await callTool(client, "send_message", { message: "hi" });
     expect(res.isError).toBe(true);
     expect(textOf(res)).toMatch(/502/);
   });

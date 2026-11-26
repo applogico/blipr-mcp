@@ -76,7 +76,7 @@ export function createServer(cfg: BliprConfig): McpServer {
   const server = new McpServer({ name: "blipr", version: "0.7.1" }); // x-release-please-version
 
   server.registerTool(
-    "send_alert",
+    "send_message",
     {
       title: "Send a Blipr message",
       description:
@@ -118,15 +118,20 @@ export function createServer(cfg: BliprConfig): McpServer {
         "Send a priority 5 message. With Blipr Pro it is delivered as Time Sensitive, so it surfaces through Focus and Do Not Disturb; on the free plan it is delivered as priority 4, never refused.",
       inputSchema: toolInput({
         message: z.string().describe("The message body."),
-        title: z.string().optional().describe("Short title."),
+        title: z.string().optional().describe("Short title, shown bold above the message."),
         topic: topicSchema,
+        tags: z
+          .array(z.string())
+          .optional()
+          .describe('Tags / emoji shortcodes, e.g. ["warning", "rocket"].'),
+        click: z.url().optional().describe("URL opened when the notification is tapped."),
         markdown: markdownSchema,
       }),
     },
-    async ({ message, title, topic, markdown }) => {
+    async ({ message, title, topic, tags, click, markdown }) => {
       try {
         const sent = await publish(
-          { message, title, topic, priority: 5, tags: ["rotating_light"], markdown },
+          { message, title, topic, priority: 5, tags, click, markdown },
           cfg
         );
         return { content: [{ type: "text", text: `Sent to "${sent}" (priority 5).` }] };
