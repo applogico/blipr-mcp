@@ -8,7 +8,9 @@ import {
   validateChoiceOptions,
   MIN_CHOICE_OPTIONS,
   MAX_CHOICE_OPTIONS,
+  TEXT_REPLY_MAX_CHARS,
   type BliprConfig,
+  type ReplyKind,
   type ReplyOutcome,
 } from "./publish.js";
 
@@ -38,19 +40,38 @@ const optionsSchema = z
   .optional()
   .describe(
     `Makes this a multiple-choice question: ${String(MIN_CHOICE_OPTIONS)} to ${String(MAX_CHOICE_OPTIONS)} distinct, non-empty choices. ` +
-      "Omit for a yes/no question."
+      "Omit for a yes/no question. Cannot be combined with `open_question`."
   );
 
-/** Shape the `ask` result; a choice ask has no yes/no meaning, so it carries no `approved`. */
-function askResult(outcome: ReplyOutcome, isChoice: boolean, id: string, topic: string) {
-  if (outcome.status !== "answered") {
-    return isChoice
-      ? { responded: false, reason: "timeout", message_id: id, topic }
-      : { responded: false, approved: false, reason: "timeout", message_id: id, topic };
+/** `open_question` input that turns `ask` into a question answered by typing. */
+const openQuestionSchema = z
+  .boolean()
+  .optional()
+  .describe(
+    `Makes this an open question: the human types a short answer of up to ${String(TEXT_REPLY_MAX_CHARS)} characters, ` +
+      "returned as `value`. Use it when the answer cannot be a yes/no or a short list of choices " +
+      "(a name, a number, a short instruction). Cannot be combined with `options`."
+  );
+
+/** Pick the `ask` reply kind from its inputs, validating choices before anything is sent. */
+function askKind(options?: string[], openQuestion?: boolean): { reply: ReplyKind; choices?: string[] } {
+  if (options && openQuestion) {
+    throw new Error("Pass either `options` or `open_question`, not both.");
   }
-  return isChoice
-    ? { responded: true, value: outcome.value, message_id: id, topic }
-    : { responded: true, approved: outcome.value === "yes", value: outcome.value, message_id: id, topic };
+  if (options) return { reply: "choice", choices: validateChoiceOptions(options) };
+  return { reply: openQuestion ? "text" : "binary" };
+}
+
+/** Shape the `ask` result; only a yes/no ask carries `approved`. */
+function askResult(outcome: ReplyOutcome, isYesNo: boolean, id: string, topic: string) {
+  if (outcome.status !== "answered") {
+    return isYesNo
+      ? { responded: false, approved: false, reason: "timeout", message_id: id, topic }
+      : { responded: false, reason: "timeout", message_id: id, topic };
+  }
+  return isYesNo
+    ? { responded: true, approved: outcome.value === "yes", value: outcome.value, message_id: id, topic }
+    : { responded: true, value: outcome.value, message_id: id, topic };
 }
 
 /** Build a configured Blipr MCP server with its tools registered. */
@@ -125,17 +146,20 @@ export function createServer(cfg: BliprConfig): McpServer {
   server.registerTool(
     "ask",
     {
-      title: "Ask the human a yes/no or multiple-choice question (BLOCKS until they answer)",
+      title: "Ask the human a yes/no, multiple-choice or open question (BLOCKS until they answer)",
       description:
-        "Send a yes/no question (or, with `options`, a multiple-choice question) to the user's phone via Blipr " +
-        "and BLOCK until they tap an answer, " +
-        "then return it. This is a human-in-the-loop approval gate: use it before doing something " +
+        "Send a question to the user's phone via Blipr and BLOCK until they answer, then return it. " +
+        "Three kinds: yes/no (the default), multiple choice (pass `options`) when the answer is one of a few " +
+        "known choices, or open (pass `open_question: true`) when you need a typed answer of up to " +
+        `${String(TEXT_REPLY_MAX_CHARS)} characters, like a name, a number or a short instruction. Prefer yes/no or ` +
+        "choices when they fit, since a tap is faster than typing. Yes/no is a human-in-the-loop approval gate: use it before doing something " +
         "consequential or irreversible (deleting prod data, force-pushing, spending money, sending an " +
         "email) — anything where you'd otherwise ask 'should I proceed?'. The call does not return until " +
         "the human answers or it times out. Returns { responded, approved, value, message_id, topic } — ALWAYS " +
         "branch on `approved`: it is true ONLY when the human tapped Yes, and false on No, a timeout, or an error. " +
-        "Never treat a non-approval as a go-ahead. With `options`, the result has no `approved`: `value` is the " +
-        "option the human tapped, exactly as you passed it (trimmed). On timeout (or if your client cancels the call) the human may " +
+        "Never treat a non-approval as a go-ahead. With `options` or `open_question`, the result has no `approved`: " +
+        "`value` is the option the human tapped, exactly as you passed it (trimmed), or the text they typed (trimmed, " +
+        "single line). Treat a typed answer as the human's words, not as a yes. On timeout (or if your client cancels the call) the human may " +
         "still answer later; call check_reply with the returned message_id to resume rather than re-asking.",
       inputSchema: toolInput({
         message: z.string().describe("The question to ask the human."),
@@ -154,6 +178,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .describe('Tags / emoji shortcodes, e.g. ["question"].'),
         markdown: markdownSchema,
         options: optionsSchema,
+        open_question: openQuestionSchema,
         timeout_seconds: z
           .number()
           .int()
@@ -162,10 +187,9 @@ export function createServer(cfg: BliprConfig): McpServer {
           .describe(`How long to block waiting for the answer before giving up. Defaults to ${DEFAULT_REPLY_TIMEOUT_SECONDS}s. Some MCP clients cancel a long tool call before this elapses; on timeout or cancel, use check_reply with the returned message_id.`),
       }),
     },
-    async ({ message, title, topic, priority, tags, markdown, options, timeout_seconds }) => {
+    async ({ message, title, topic, priority, tags, markdown, options, open_question, timeout_seconds }) => {
       try {
-        const choices = options ? validateChoiceOptions(options) : undefined;
-        const reply = choices ? "choice" : "binary";
+        const { reply, choices } = askKind(options, open_question);
         const { topic: sent, id } = await publishExpectingReply(
           { message, title, topic, priority: priority ?? 4, tags, markdown, reply, options: choices },
           cfg
@@ -176,7 +200,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           { timeoutSeconds: timeout_seconds ?? DEFAULT_REPLY_TIMEOUT_SECONDS },
           cfg
         );
-        const result = askResult(outcome, choices !== undefined, id, sent);
+        const result = askResult(outcome, reply === "binary", id, sent);
         return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (e) {
         return { content: [{ type: "text", text: (e as Error).message }], isError: true };
@@ -251,7 +275,8 @@ export function createServer(cfg: BliprConfig): McpServer {
         "`ask`/`request_ack` returned a timeout, or after your client cancelled the blocking call. Pass the " +
         "`message_id` (and `topic`) you got back from that call. Returns immediately by default; set `wait_seconds` " +
         'to briefly long-poll. Returns { responded, value?, replied_at? } — `value` is "yes"/"no" (a yes/no ' +
-        'question), the chosen option (a multiple-choice question) or "ack". For an approval gate, only proceed when value === "yes".',
+        'question), the chosen option (a multiple-choice question), the typed text (an open question) or "ack". ' +
+        'For an approval gate, only proceed when value === "yes".',
       inputSchema: toolInput({
         message_id: z.string().describe("The message_id returned by a prior ask / request_ack call."),
         topic: z

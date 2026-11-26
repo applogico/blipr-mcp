@@ -10,7 +10,10 @@ export interface BliprConfig {
 }
 
 /** The kind of reply a published message asks the human to attach. */
-export type ReplyKind = "binary" | "ack" | "choice";
+export type ReplyKind = "binary" | "ack" | "choice" | "text";
+
+/** Longest typed answer the relay accepts for a "text" reply (notify `TEXT_REPLY_MAX_CHARS`). */
+export const TEXT_REPLY_MAX_CHARS = 120;
 
 /** Option count bounds for a choice ask; the relay enforces the same 2 to 5. */
 export const MIN_CHOICE_OPTIONS = 2;
@@ -77,7 +80,7 @@ export interface PublishOpts {
   click?: string;
   /** Render the body as Markdown; sent as the `X-Markdown` header. */
   markdown?: boolean;
-  /** Ask the recipient for a reply: "binary" (yes/no), "ack" or "choice". */
+  /** Ask the recipient for a reply: "binary" (yes/no), "ack", "choice" or "text" (typed answer). */
   reply?: ReplyKind;
   /** The choices for a "choice" reply. */
   options?: string[];

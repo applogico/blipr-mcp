@@ -110,12 +110,13 @@ Time Sensitive, so it surfaces through Focus and Do Not Disturb. On the free
 plan it is delivered as priority 4, never refused. The plan is the sender's:
 set `BLIPR_TOKEN` to an account token so it sends as your Pro account.
 
-### `ask`: human-in-the-loop yes/no or multiple choice (blocks)
+### `ask`: human-in-the-loop yes/no, multiple choice or open question (blocks)
 
-Send a **yes/no or multiple-choice question** to your phone and **block until you tap an answer**,
-then return it. This is an approval gate: the agent calls it before doing
+Send a **yes/no, multiple-choice or open question** to your phone and **block until you answer**,
+then return it. As a yes/no question it is an approval gate: the agent calls it before doing
 something consequential or irreversible and waits for your decision instead of
-guessing.
+guessing. When a tap is not enough, an open question lets you type the answer
+yourself, up to 120 characters.
 
 - `message` (required): the question.
 - `title` — short bold title.
@@ -126,6 +127,10 @@ guessing.
 - `markdown`: render the body as Markdown (bold, italics, links, code). Off by default.
 - `options`: 2 to 5 distinct choices. Makes it a multiple-choice question; omit for yes/no.
   Free on every plan; an answer counts toward your daily replies like any other.
+- `open_question`: set to `true` to get a typed answer of up to 120 characters
+  instead of a tap. Use it when the answer is a name, a number or a short
+  instruction rather than yes/no or one of a few choices. Cannot be combined
+  with `options`. Free on every plan; an answer counts toward your daily replies.
 - `timeout_seconds` — how long to wait for your answer (default `120`).
 
 Returns `{ responded, approved, value, message_id, topic }`. **Branch on
@@ -139,8 +144,11 @@ later: pass the returned `message_id` to `check_reply` to pick it up.
 With `options`, it returns `{ responded, value, message_id, topic }` with no
 `approved`. `value` is the option you tapped, exactly as sent.
 
-Under the hood it publishes with `reply: "binary"` (or `reply: "choice"` with
-`options`), captures the message `id`
+With `open_question`, it returns the same shape with no `approved`. `value` is
+what you typed, trimmed to a single line of at most 120 characters.
+
+Under the hood it publishes with `reply: "binary"` (`reply: "choice"` with
+`options`, `reply: "text"` with `open_question`), captures the message `id`
 from the publish response, then long-polls
 `GET /blip/<topic>/<id>/reply?wait=…` until you answer or the timeout
 budget runs out.
@@ -149,7 +157,7 @@ budget runs out.
 
 Send a message that you must **acknowledge**, and **block until you tap
 "Acknowledge"**. Use it when the human has to see and confirm something before
-the agent continues. Same parameters as `ask` except `options`; publishes with `reply: "ack"`.
+the agent continues. Same parameters as `ask` except `options` and `open_question`; publishes with `reply: "ack"`.
 
 Returns `{ responded, message_id, topic }` plus `replied_at` when acked, or
 `{ responded: false, reason: "timeout", … }`. As with `ask`, on a timeout you can
@@ -161,7 +169,7 @@ Look up whether you've replied to an earlier `ask`/`request_ack` — handy if th
 blocking call timed out or your MCP client cancelled it. Pass the `message_id`
 (and `topic`) it returned; non-blocking by default, or set `wait_seconds` to
 briefly long-poll (up to `300` seconds). Returns `{ responded, value?, replied_at? }` (`value` is
-`"yes"` / `"no"` / `"ack"`, or the chosen option).
+`"yes"` / `"no"` / `"ack"`, the chosen option, or the text you typed).
 
 ## Example prompts
 
@@ -173,6 +181,9 @@ briefly long-poll (up to `300` seconds). Returns `{ responded, value?, replied_a
 
 > "Before you `DROP` the production table, `ask` me to approve it — only proceed
 > if I answer yes."
+
+> "If you're unsure what to name the release, `ask` me as an open question and
+> use what I type."
 
 A concrete approval-gate flow:
 

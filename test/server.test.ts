@@ -241,6 +241,65 @@ describe("MCP server", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
+  it("ask with open_question publishes reply:text and returns the typed answer, no approved", async () => {
+    mockReplyFlow({ status: "answered", value: "Use the staging bucket", replied_at: 1700000020 });
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    const res = await callTool(client, "ask", {
+      message: "which bucket?",
+      open_question: true,
+      timeout_seconds: 5,
+    });
+    expect(res.isError ?? false).toBe(false);
+    expect(jsonOf(res)).toEqual({
+      responded: true,
+      value: "Use the staging bucket",
+      message_id: "abc123def456",
+      topic: "demo",
+    });
+    expect(bodyOf(0)).toMatchObject({ message: "which bucket?", reply: "text" });
+    expect(bodyOf(0)).not.toHaveProperty("options");
+  });
+
+  it("ask with open_question never reads a typed yes as approval", async () => {
+    mockReplyFlow({ status: "answered", value: "yes" });
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    const res = await callTool(client, "ask", { message: "notes?", open_question: true, timeout_seconds: 5 });
+    expect(jsonOf(res)).not.toHaveProperty("approved");
+  });
+
+  it("ask with open_question returns the timed-out shape without approved", async () => {
+    mockReplyFlow({ status: "timeout" });
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    const res = await callTool(client, "ask", { message: "name?", open_question: true, timeout_seconds: 1 });
+    expect(jsonOf(res)).toEqual({
+      responded: false,
+      reason: "timeout",
+      message_id: "abc123def456",
+      topic: "demo",
+    });
+  });
+
+  it("ask with open_question:false stays a yes/no question", async () => {
+    mockReplyFlow({ status: "answered", value: "no" });
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    const res = await callTool(client, "ask", { message: "go?", open_question: false, timeout_seconds: 5 });
+    expect(bodyOf(0)).toMatchObject({ reply: "binary" });
+    expect(jsonOf(res)).toMatchObject({ approved: false, value: "no" });
+  });
+
+  it("ask rejects open_question combined with options without publishing", async () => {
+    mockFetch();
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    const res = await callTool(client, "ask", {
+      message: "pick",
+      options: ["A", "B"],
+      open_question: true,
+    });
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toMatch(/not both/);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it("request_ack publishes reply:ack and returns acknowledged on answer", async () => {
     mockReplyFlow({ status: "answered", value: "ack", replied_at: 1700000042 });
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
@@ -282,6 +341,14 @@ describe("MCP server", () => {
     });
     // a single instant GET (wait=0), no publish
     expect(calls()[0][0]).toBe("https://blipr.dev/blip/demo/abc123def456/reply?wait=0");
+  });
+
+  it("check_reply returns a typed answer to an open question verbatim", async () => {
+    const typed = "Ship it after 5, café closes early";
+    mockFetch(200, "OK", JSON.stringify({ status: "answered", value: typed, replied_at: 1700000100 }));
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    const res = await callTool(client, "check_reply", { message_id: "abc123def456" });
+    expect(jsonOf(res)).toEqual({ responded: true, value: typed, replied_at: 1700000100 });
   });
 
   it("check_reply reports not-responded when there is no answer yet", async () => {
