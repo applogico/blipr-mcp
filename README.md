@@ -128,9 +128,7 @@ yourself, up to 120 characters.
 - `options`: 2 to 5 distinct choices. Makes it a multiple-choice question; omit for yes/no.
   Free on every plan; an answer counts toward your daily replies like any other.
 - `open_question`: set to `true` to get a typed answer of up to 120 characters
-  instead of a tap. Use it when the answer is a name, a number or a short
-  instruction rather than yes/no or one of a few choices. Cannot be combined
-  with `options`. Free on every plan; an answer counts toward your daily replies.
+  instead of a tap. Cannot be combined with `options`. Free on every plan; an answer counts toward your daily replies.
 - `timeout_seconds` — how long to wait for your answer (default `120`).
 
 Returns `{ responded, approved, value, message_id, topic }`. **Branch on

@@ -49,8 +49,7 @@ const openQuestionSchema = z
   .optional()
   .describe(
     `Makes this an open question: the human types a short answer of up to ${String(TEXT_REPLY_MAX_CHARS)} characters, ` +
-      "returned as `value`. Use it when the answer cannot be a yes/no or a short list of choices " +
-      "(a name, a number, a short instruction). Cannot be combined with `options`."
+      "returned as `value`. Cannot be combined with `options`."
   );
 
 /** Pick the `ask` reply kind from its inputs, validating choices before anything is sent. */
@@ -149,10 +148,9 @@ export function createServer(cfg: BliprConfig): McpServer {
       title: "Ask the human a yes/no, multiple-choice or open question (BLOCKS until they answer)",
       description:
         "Send a question to the user's phone via Blipr and BLOCK until they answer, then return it. " +
-        "Three kinds: yes/no (the default), multiple choice (pass `options`) when the answer is one of a few " +
-        "known choices, or open (pass `open_question: true`) when you need a typed answer of up to " +
-        `${String(TEXT_REPLY_MAX_CHARS)} characters, like a name, a number or a short instruction. Prefer yes/no or ` +
-        "choices when they fit, since a tap is faster than typing. Yes/no is a human-in-the-loop approval gate: use it before doing something " +
+        "Three kinds: yes/no (the default), multiple choice (pass `options`), or open (pass `open_question: true`), " +
+        `where the human types an answer of up to ${String(TEXT_REPLY_MAX_CHARS)} characters. ` +
+        "Yes/no is a human-in-the-loop approval gate: use it before doing something " +
         "consequential or irreversible (deleting prod data, force-pushing, spending money, sending an " +
         "email) — anything where you'd otherwise ask 'should I proceed?'. The call does not return until " +
         "the human answers or it times out. A yes/no question returns { responded, approved, value, message_id, topic } — ALWAYS " +
