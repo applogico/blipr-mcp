@@ -152,7 +152,7 @@ with the returned `message_id` picks up a later ack.
 Look up whether you've replied to an earlier `ask` or `request_ack`, including
 one that timed out or that your MCP client cancelled. Takes the `message_id`
 (and `topic`) it returned; non-blocking by default, or set `wait_seconds` to
-briefly long-poll (up to `300` seconds). Returns `{ responded, value?, replied_at? }` (`value` is
+wait for an answer. Returns `{ responded, value?, replied_at? }` (`value` is
 `"yes"` / `"no"` / `"ack"`, the chosen option, or the text you typed).
 
 ## Example prompts

@@ -342,6 +342,16 @@ describe("MCP server", () => {
     expect(jsonOf(res)).toEqual({ responded: true, value: typed, replied_at: 1700000100 });
   });
 
+  it("check_reply waits as long as asked, across several requests", async () => {
+    mockFetch(200, "OK", JSON.stringify({ status: "timeout" }));
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    const res = await callTool(client, "check_reply", { message_id: "abc123def456", wait_seconds: 700 });
+    expect(jsonOf(res)).toEqual({ responded: false });
+    const waits = calls().map((c) => Number(new URL(c[0]).searchParams.get("wait")));
+    expect(waits.length).toBeGreaterThan(1);
+    expect(waits.reduce((sum, w) => sum + w, 0)).toBe(700);
+  });
+
   it("check_reply reports not-responded when there is no answer yet", async () => {
     mockFetch(200, "OK", JSON.stringify({ status: "pending" }));
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });

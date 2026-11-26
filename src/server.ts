@@ -265,7 +265,7 @@ export function createServer(cfg: BliprConfig): McpServer {
         "Look up whether the human has replied to an earlier `ask` or `request_ack`, including one that timed out " +
         "or that your client cancelled. Takes the " +
         "`message_id` (and `topic`) that call returned. Returns immediately by default; set `wait_seconds` " +
-        'to briefly long-poll. Returns { responded, value?, replied_at? } — `value` is "yes"/"no" (a yes/no ' +
+        'to wait for an answer. Returns { responded, value?, replied_at? } — `value` is "yes"/"no" (a yes/no ' +
         'question), the chosen option (a multiple-choice question), the typed text (an open question) or "ack".',
       inputSchema: toolInput({
         message_id: z.string().describe("The message_id returned by a prior ask / request_ack call."),
@@ -281,7 +281,7 @@ export function createServer(cfg: BliprConfig): McpServer {
           .int()
           .min(0)
           .optional()
-          .describe("Seconds to long-poll for an answer, up to 300 (0 = instant check; default 0)."),
+          .describe("Seconds to wait for an answer (0 = instant check; default 0)."),
       }),
     },
     async ({ message_id, topic, wait_seconds }) => {
@@ -293,7 +293,12 @@ export function createServer(cfg: BliprConfig): McpServer {
               "or set a per-project default in a `.blipr-topic` file (or the BLIPR_TOPIC env var)."
           );
         }
-        const outcome = await checkReply(t, message_id, wait_seconds ?? 0, cfg);
+        const wait = wait_seconds ?? 0;
+        // A wait longer than one server long-poll is spread over several requests.
+        const outcome =
+          wait > 0
+            ? await pollReply(t, message_id, { timeoutSeconds: wait }, cfg)
+            : await checkReply(t, message_id, 0, cfg);
         const result =
           outcome.status === "answered"
             ? { responded: true, value: outcome.value, replied_at: outcome.repliedAt }
