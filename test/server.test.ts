@@ -3,7 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer } from "../src/server.js";
 import type { BliprConfig } from "../src/publish.js";
-import { bodyOf, calls, installFetch, jsonRes } from "./helpers.js";
+import { authOf, bodyOf, calls, installFetch, jsonRes } from "./helpers.js";
 
 /** Link a Client to a fresh server over an in-memory transport pair. */
 async function connect(cfg: BliprConfig): Promise<Client> {
@@ -49,6 +49,7 @@ describe("MCP server", () => {
       "request_ack",
       "send_critical",
       "send_message",
+      "wait_for_message",
     ]);
   });
 
@@ -357,5 +358,47 @@ describe("MCP server", () => {
     const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
     const res = await callTool(client, "check_reply", { message_id: "abc123def456" });
     expect(jsonOf(res)).toEqual({ responded: false });
+  });
+
+  /** An event-stream response carrying the given frames, then left open. */
+  function sseRes(frames: unknown[], signal: AbortSignal): Response {
+    const text = frames.map((f) => `data: ${JSON.stringify(f)}\n\n`).join("");
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(text));
+        // Like a real fetch body, the stream fails when the request is aborted.
+        signal.addEventListener("abort", () => {
+          controller.error(new Error("aborted"));
+        });
+      },
+    });
+    return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+  }
+
+  it("wait_for_message returns the next message from the topic stream", async () => {
+    const message = { id: "m1", event: "message", topic: "demo", message: "build done", cursor: 7 };
+    installFetch(async (_url, init) => sseRes([{ event: "open" }, { event: "keepalive" }, message], init.signal));
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo", token: "blipr_pk_x" });
+    const res = await callTool(client, "wait_for_message", { since: "c6" });
+    expect(jsonOf(res)).toEqual({ received: true, message });
+    expect(calls()).toHaveLength(1);
+    expect(calls()[0][0]).toBe("https://blipr.dev/blip/demo/sse?since=c6");
+    expect(authOf(0)).toBe("Bearer blipr_pk_x");
+  });
+
+  it("wait_for_message stops at timeout_seconds when nothing arrives", async () => {
+    installFetch(async (_url, init) => sseRes([{ event: "open" }], init.signal));
+    const client = await connect({ bliprUrl: "https://blipr.dev", defaultTopic: "demo" });
+    const res = await callTool(client, "wait_for_message", { timeout_seconds: 1 });
+    expect(jsonOf(res)).toEqual({ received: false, reason: "timeout" });
+  });
+
+  it("wait_for_message reports a refused topic instead of retrying forever", async () => {
+    installFetch(async () => jsonRes({ error: "Topic not found" }, 404));
+    const client = await connect({ bliprUrl: "https://blipr.dev" });
+    const res = await callTool(client, "wait_for_message", { topic: "nope" });
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toMatch(/404/);
+    expect(calls()).toHaveLength(1);
   });
 });

@@ -11,7 +11,8 @@
 
 An [MCP](https://modelcontextprotocol.io) server that lets AI agents send
 **[Blipr](https://blipr.dev)** push notifications to your phone. It can also
-**ask you a question and block until you answer**.
+**ask you a question and block until you answer**, and **wait for the next
+message on a topic**.
 
 It's a thin stdio client: your MCP host (Claude Code, Cursor, …) launches it,
 the agent calls a tool, and this process makes one outbound HTTPS `POST` to your
@@ -155,6 +156,26 @@ one that timed out or that your MCP client cancelled. Takes the `message_id`
 wait for an answer. Returns `{ responded, value?, replied_at? }` (`value` is
 `"yes"` / `"no"` / `"ack"`, the chosen option, or the text you typed).
 
+### `wait_for_message`: next message on a topic (blocks)
+
+Listen on a topic's live stream and **block until a message is published to
+it**, then return that message. The sender can be anything that publishes to
+the topic.
+
+- `topic`: topic to listen on (falls back to `.blipr-topic`, then `BLIPR_TOPIC`).
+- `since`: where to start: `"all"`, `"c<cursor>"` (after a received message),
+  a Unix time in seconds, or a duration like `"10m"`. Omit for new messages only.
+- `timeout_seconds`: stop waiting after this many seconds. Omit to wait with
+  no time limit.
+
+Returns `{ received: true, message }`, or `{ received: false, reason: "timeout" }`.
+With `since`, messages published after that point are returned first, oldest
+first, one per call; `since: "c<message.cursor>"` on the next call continues
+after that message.
+
+It holds one streaming connection (`GET /blip/<topic>/sse`) open and reconnects
+if it drops. Some MCP clients cancel a tool call that runs for a long time.
+
 ## Example prompts
 
 > "Run the migration, and `send_message` me when it's done."
@@ -162,6 +183,8 @@ wait for an answer. Returns `{ responded, value?, replied_at? }` (`value` is
 > "`ask` me before you run the migration."
 
 > "`ask` me as an open question what to call the release."
+
+> "`wait_for_message` on `deploys` and tell me what arrives."
 
 ## Develop
 

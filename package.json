@@ -45,6 +45,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@blipr/js": "^0.2.3",
     "@modelcontextprotocol/sdk": "^1.17.0",
     "zod": "^4.6.7"
   },

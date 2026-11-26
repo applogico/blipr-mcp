@@ -13,6 +13,7 @@ import {
   type ReplyKind,
   type ReplyOutcome,
 } from "./publish.js";
+import { waitForMessage } from "./subscribe.js";
 
 /** Default overall time to wait for a human reply before giving up. */
 const DEFAULT_REPLY_TIMEOUT_SECONDS = 120;
@@ -65,6 +66,62 @@ function askResult(outcome: ReplyOutcome, id: string, topic: string) {
   return outcome.status === "answered"
     ? { responded: true, value: outcome.value, message_id: id, topic }
     : { responded: false, reason: "timeout", message_id: id, topic };
+}
+
+/** Register the tool that listens on a topic's event stream. */
+function registerWaitForMessage(server: McpServer, cfg: BliprConfig): void {
+  server.registerTool(
+    "wait_for_message",
+    {
+      title: "Wait for the next message on a topic (BLOCKS until one arrives)",
+      description:
+        "Listen on a topic's live stream and BLOCK until a message is published to it, then return that message. " +
+        "With `since`, messages published after that point are returned first, oldest first, one per call. " +
+        "Waits with no time limit unless `timeout_seconds` is set. Returns { received: true, message }, or " +
+        '{ received: false, reason: "timeout" }. Passing `since: "c<message.cursor>"` on the next call continues ' +
+        "after that message.",
+      inputSchema: toolInput({
+        topic: z
+          .string()
+          .optional()
+          .describe(
+            "Topic to listen on. When omitted, falls back to the project's `.blipr-topic` file, then the BLIPR_TOPIC env var."
+          ),
+        since: z
+          .string()
+          .optional()
+          .describe(
+            'Where to start: "all", "c<cursor>" (after a received message), a Unix time in seconds, or a duration like "10m". ' +
+              "Omit for new messages only."
+          ),
+        timeout_seconds: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Stop waiting after this many seconds. Omit to wait with no time limit."),
+      }),
+    },
+    async ({ topic, since, timeout_seconds }, extra) => {
+      try {
+        const t = (topic ?? cfg.defaultTopic ?? "").trim();
+        if (!t) {
+          throw new Error(
+            "No topic given and no default is configured. Pass `topic` in the tool call, " +
+              "or set a per-project default in a `.blipr-topic` file (or the BLIPR_TOPIC env var)."
+          );
+        }
+        const outcome = await waitForMessage(t, { since, timeoutSeconds: timeout_seconds, signal: extra.signal }, cfg);
+        const result =
+          outcome.status === "message"
+            ? { received: true, message: outcome.message }
+            : { received: false, reason: "timeout" };
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      } catch (e) {
+        return { content: [{ type: "text", text: (e as Error).message }], isError: true };
+      }
+    }
+  );
 }
 
 /** Build a configured Blipr MCP server with its tools registered. */
@@ -309,6 +366,8 @@ export function createServer(cfg: BliprConfig): McpServer {
       }
     }
   );
+
+  registerWaitForMessage(server, cfg);
 
   return server;
 }
